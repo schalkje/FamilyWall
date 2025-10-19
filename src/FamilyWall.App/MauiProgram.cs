@@ -53,6 +53,10 @@ public static class MauiProgram
 		builder.Services.AddScoped<FamilyWall.Core.Abstractions.IPhotoScanService, FamilyWall.Services.PhotoScanService>();
 		builder.Services.AddSingleton<FamilyWall.App.Services.PhotoUrlService>();
 
+		// Presence and Screen State
+		builder.Services.AddSingleton<FamilyWall.Core.Abstractions.IScreenStateService, FamilyWall.Services.ScreenStateService>();
+		builder.Services.AddSingleton<FamilyWall.Core.Abstractions.IPresenceDetector, FamilyWall.Services.MockPresenceDetector>();
+
 		// Background Services
 		builder.Services.AddHostedService<PresenceService>();
 

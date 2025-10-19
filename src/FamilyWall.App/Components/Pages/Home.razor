@@ -1,5 +1,537 @@
-﻿@page "/"
+@page "/"
+@implements IDisposable
 
-<h1>Hello, world!</h1>
+<PageTitle>FamilyWall</PageTitle>
 
-Welcome to your new app.
+<div class="passive-mode @(currentState.ToString().ToLower())">
+    @if (currentState == FamilyWall.Core.Models.ScreenState.Off)
+    {
+        <!-- Screen off - completely black -->
+        <div class="screen-off"></div>
+    }
+    else if (currentState == FamilyWall.Core.Models.ScreenState.NightLive)
+    {
+        <!-- Night Mode with camera preview -->
+        <div class="night-live-mode">
+            <div class="live-indicator">
+                <span class="live-dot"></span> LIVE
+            </div>
+            <div class="camera-preview">
+                <div class="camera-placeholder">
+                    <span class="camera-icon">📷</span>
+                    <p>Camera feed placeholder</p>
+                </div>
+            </div>
+        </div>
+    }
+    else
+    {
+        <!-- Passive Mode: Full-screen photo with overlays -->
+        @if (currentPhoto != null)
+        {
+            <div class="photo-background">
+                <img src="@GetPhotoUrl()" alt="Photo of the day" class="fullscreen-photo" />
+            </div>
+
+            <!-- Bottom overlay with date/time and upcoming events -->
+            <div class="bottom-overlay">
+                <div class="date-time-section">
+                    <div class="date">@currentTime.ToString("ddd, MMM dd")</div>
+                    <div class="time">@currentTime.ToString("HH:mm")</div>
+                    @if (!string.IsNullOrEmpty(weather))
+                    {
+                        <div class="weather">@weather</div>
+                    }
+                </div>
+
+                <div class="upcoming-section">
+                    <div class="upcoming-header">📅 Upcoming</div>
+                    @if (upcomingEvents.Any())
+                    {
+                        @foreach (var evt in upcomingEvents.Take(3))
+                        {
+                            <div class="event-item">
+                                <span class="event-time">@evt.Time</span>
+                                <span class="event-title">@evt.Title</span>
+                            </div>
+                        }
+                    }
+                    else
+                    {
+                        <div class="no-events">No upcoming events</div>
+                    }
+                </div>
+            </div>
+
+            <!-- Subtle photo info (bottom-left corner, very subtle) -->
+            @if (currentPhoto.TakenUtc.HasValue)
+            {
+                <div class="photo-date-badge">
+                    @currentPhoto.TakenUtc.Value.ToLocalTime().ToString("MMMM dd, yyyy")
+                </div>
+            }
+        }
+        else
+        {
+            <!-- No photo available -->
+            <div class="no-photo-state">
+                <div class="no-photo-content">
+                    <span class="icon">🖼️</span>
+                    @if (indexingStatus?.IsScanning == true)
+                    {
+                        <h2>Scanning photos...</h2>
+                        <p>@indexingStatus.ProcessedFiles of @indexingStatus.TotalFiles files</p>
+                        <div class="scan-progress">
+                            <div class="scan-bar" style="width: @(indexingStatus.PercentComplete)%"></div>
+                        </div>
+                    }
+                    else
+                    {
+                        <h2>No photos yet</h2>
+                        <p>Add photos to your configured source to begin</p>
+                    }
+                </div>
+
+                <!-- Still show date/time overlay -->
+                <div class="bottom-overlay">
+                    <div class="date-time-section">
+                        <div class="date">@currentTime.ToString("ddd, MMM dd")</div>
+                        <div class="time">@currentTime.ToString("HH:mm")</div>
+                    </div>
+                </div>
+            </div>
+        }
+    }
+</div>
+
+<style>
+    .passive-mode {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100vw;
+        height: 100vh;
+        overflow: hidden;
+        background: #000;
+    }
+
+    .screen-off {
+        width: 100%;
+        height: 100%;
+        background: #000;
+    }
+
+    .night-live-mode {
+        width: 100%;
+        height: 100%;
+        position: relative;
+        background: #000;
+    }
+
+    .live-indicator {
+        position: absolute;
+        top: 2rem;
+        right: 2rem;
+        background: rgba(220, 38, 38, 0.95);
+        color: white;
+        padding: 0.75rem 1.5rem;
+        border-radius: 8px;
+        font-weight: 700;
+        font-size: 1.5em;
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        z-index: 100;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+    }
+
+    .live-dot {
+        width: 16px;
+        height: 16px;
+        background: white;
+        border-radius: 50%;
+        animation: pulse 1.5s ease-in-out infinite;
+    }
+
+    @@keyframes pulse {
+        0%, 100% {
+            opacity: 1;
+        }
+
+        50% {
+            opacity: 0.3;
+        }
+    }
+
+    .camera-preview {
+        width: 100%;
+        height: 100%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    .camera-placeholder {
+        text-align: center;
+        color: #666;
+    }
+
+    .camera-icon {
+        font-size: 8em;
+        display: block;
+        margin-bottom: 1rem;
+        opacity: 0.3;
+    }
+
+    .camera-placeholder p {
+        font-size: 1.5em;
+        opacity: 0.5;
+    }
+
+    .photo-background {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        z-index: 1;
+    }
+
+    .fullscreen-photo {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        animation: fadeIn 1s ease-in-out;
+    }
+
+    @@keyframes fadeIn {
+        from {
+            opacity: 0;
+        }
+
+        to {
+            opacity: 1;
+        }
+    }
+
+    .bottom-overlay {
+        position: absolute;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        background: linear-gradient(to top, rgba(0,0,0,0.85), rgba(0,0,0,0.6) 70%, transparent);
+        padding: 2rem 3rem 2rem 3rem;
+        z-index: 10;
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-end;
+        gap: 3rem;
+    }
+
+    .date-time-section {
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+        color: white;
+    }
+
+    .date {
+        font-size: 2rem;
+        font-weight: 300;
+        letter-spacing: 0.5px;
+    }
+
+    .time {
+        font-size: 4rem;
+        font-weight: 700;
+        line-height: 1;
+        font-variant-numeric: tabular-nums;
+    }
+
+    .weather {
+        font-size: 1.5rem;
+        opacity: 0.9;
+        margin-top: 0.5rem;
+    }
+
+    .upcoming-section {
+        flex: 1;
+        max-width: 600px;
+        color: white;
+    }
+
+    .upcoming-header {
+        font-size: 1.3rem;
+        font-weight: 600;
+        margin-bottom: 1rem;
+        opacity: 0.95;
+    }
+
+    .event-item {
+        display: flex;
+        gap: 1.5rem;
+        padding: 0.75rem 0;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+        font-size: 1.2rem;
+    }
+
+        .event-item:last-child {
+            border-bottom: none;
+        }
+
+    .event-time {
+        font-weight: 600;
+        min-width: 80px;
+        opacity: 0.9;
+    }
+
+    .event-title {
+        flex: 1;
+        opacity: 0.95;
+    }
+
+    .no-events {
+        font-size: 1.1rem;
+        opacity: 0.6;
+        font-style: italic;
+    }
+
+    .photo-date-badge {
+        position: absolute;
+        bottom: 2rem;
+        left: 3rem;
+        background: rgba(0, 0, 0, 0.5);
+        color: rgba(255, 255, 255, 0.7);
+        padding: 0.5rem 1rem;
+        border-radius: 4px;
+        font-size: 0.9rem;
+        z-index: 5;
+        backdrop-filter: blur(4px);
+    }
+
+    .no-photo-state {
+        width: 100%;
+        height: 100%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+    }
+
+    .no-photo-content {
+        text-align: center;
+        color: white;
+        padding: 3rem;
+    }
+
+        .no-photo-content .icon {
+            font-size: 8em;
+            display: block;
+            margin-bottom: 1.5rem;
+            opacity: 0.3;
+        }
+
+        .no-photo-content h2 {
+            font-size: 2.5rem;
+            font-weight: 300;
+            margin-bottom: 1rem;
+            opacity: 0.9;
+        }
+
+        .no-photo-content p {
+            font-size: 1.3rem;
+            opacity: 0.6;
+        }
+
+    .scan-progress {
+        width: 300px;
+        height: 4px;
+        background: rgba(255, 255, 255, 0.2);
+        border-radius: 2px;
+        margin: 1.5rem auto 0;
+        overflow: hidden;
+    }
+
+    .scan-bar {
+        height: 100%;
+        background: linear-gradient(90deg, #4CAF50, #8BC34A);
+        transition: width 0.3s ease;
+    }
+</style>
+
+@code {
+    private FamilyWall.Core.Models.Media? currentPhoto;
+    private FamilyWall.Core.Abstractions.IndexingStatus? indexingStatus;
+    private FamilyWall.Core.Models.ScreenState currentState;
+    private DateTime currentTime = DateTime.Now;
+    private string currentPhotoDataUrl = "";
+    private string weather = "☀ 14°C";
+    private List<UpcomingEvent> upcomingEvents = new();
+    private System.Threading.Timer? autoAdvanceTimer;
+    private System.Threading.Timer? clockTimer;
+    private System.Threading.Timer? photoCheckTimer;
+
+    [Inject] private FamilyWall.Core.Abstractions.IPhotoIndex? PhotoIndex { get; set; }
+    [Inject] private FamilyWall.Core.Abstractions.IScreenStateService? ScreenStateService { get; set; }
+    [Inject] private FamilyWall.Core.Abstractions.IIndexingStatusService? IndexingStatusService { get; set; }
+    [Inject] private FamilyWall.App.Services.PhotoUrlService? PhotoUrlService { get; set; }
+    [Inject] private Microsoft.Extensions.Options.IOptions<FamilyWall.Core.Settings.AppSettings>? Settings { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Get current screen state
+        if (ScreenStateService != null)
+        {
+            currentState = ScreenStateService.CurrentState;
+            ScreenStateService.StateChanged += OnStateChanged;
+        }
+
+        // Subscribe to indexing status
+        if (IndexingStatusService != null)
+        {
+            IndexingStatusService.StatusChanged += OnIndexingStatusChanged;
+            indexingStatus = IndexingStatusService.Status;
+        }
+
+        // Load first photo
+        await LoadNextPhoto();
+
+        // Start auto-advance timer (only in Interactive/Ambient modes)
+        if (currentState == FamilyWall.Core.Models.ScreenState.Interactive ||
+            currentState == FamilyWall.Core.Models.ScreenState.Ambient)
+        {
+            StartAutoAdvance();
+        }
+
+        // Start clock update timer
+        clockTimer = new System.Threading.Timer(_ =>
+        {
+            currentTime = DateTime.Now;
+            InvokeAsync(StateHasChanged);
+        }, null, TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(1));
+
+        // Check for new photos during scanning
+        photoCheckTimer = new System.Threading.Timer(async _ =>
+        {
+            if (currentPhoto == null && indexingStatus?.HasPhotos == true)
+            {
+                await InvokeAsync(async () =>
+                {
+                    await LoadNextPhoto();
+                });
+            }
+        }, null, TimeSpan.FromSeconds(2), TimeSpan.FromSeconds(2));
+
+        // Load mock upcoming events
+        LoadUpcomingEvents();
+    }
+
+    private void OnStateChanged(object? sender, FamilyWall.Core.Abstractions.ScreenStateChangedEventArgs e)
+    {
+        currentState = e.NewState;
+
+        // Start/stop auto-advance based on state
+        if (currentState == FamilyWall.Core.Models.ScreenState.Interactive ||
+            currentState == FamilyWall.Core.Models.ScreenState.Ambient)
+        {
+            StartAutoAdvance();
+        }
+        else
+        {
+            StopAutoAdvance();
+        }
+
+        InvokeAsync(StateHasChanged);
+    }
+
+    private void OnIndexingStatusChanged(object? sender, FamilyWall.Core.Abstractions.IndexingStatus status)
+    {
+        InvokeAsync(() =>
+        {
+            indexingStatus = status;
+            StateHasChanged();
+        });
+    }
+
+    private async Task LoadNextPhoto()
+    {
+        if (PhotoIndex != null)
+        {
+            currentPhoto = await PhotoIndex.GetNextPhotoAsync();
+            if (currentPhoto != null)
+            {
+                await PhotoIndex.RecordShownAsync(currentPhoto.Id);
+
+                // Load photo as data URL
+                if (PhotoUrlService != null)
+                {
+                    currentPhotoDataUrl = await PhotoUrlService.GetPhotoDataUrlAsync(currentPhoto.Path);
+                }
+            }
+            else
+            {
+                currentPhotoDataUrl = "";
+            }
+            StateHasChanged();
+        }
+    }
+
+    private void StartAutoAdvance()
+    {
+        if (autoAdvanceTimer != null) return;
+
+        var intervalSeconds = Settings?.Value?.Photos?.SlideshowIntervalSeconds ?? 5;
+        autoAdvanceTimer = new System.Threading.Timer(async _ =>
+        {
+            await InvokeAsync(async () =>
+            {
+                await LoadNextPhoto();
+            });
+        }, null, TimeSpan.FromSeconds(intervalSeconds), TimeSpan.FromSeconds(intervalSeconds));
+    }
+
+    private void StopAutoAdvance()
+    {
+        autoAdvanceTimer?.Dispose();
+        autoAdvanceTimer = null;
+    }
+
+    private void LoadUpcomingEvents()
+    {
+        // Mock data - will be replaced with real calendar integration in milestone 4
+        upcomingEvents = new List<UpcomingEvent>
+        {
+            new UpcomingEvent { Time = "15:00", Title = "Birthday - Chris" },
+            new UpcomingEvent { Time = "17:30", Title = "Dentist Appointment" },
+            new UpcomingEvent { Time = "Tomorrow", Title = "Team Meeting" }
+        };
+    }
+
+    private string GetPhotoUrl()
+    {
+        return currentPhotoDataUrl;
+    }
+
+    public void Dispose()
+    {
+        autoAdvanceTimer?.Dispose();
+        clockTimer?.Dispose();
+        photoCheckTimer?.Dispose();
+
+        if (ScreenStateService != null)
+        {
+            ScreenStateService.StateChanged -= OnStateChanged;
+        }
+
+        if (IndexingStatusService != null)
+        {
+            IndexingStatusService.StatusChanged -= OnIndexingStatusChanged;
+        }
+    }
+
+    private class UpcomingEvent
+    {
+        public string Time { get; set; } = "";
+        public string Title { get; set; } = "";
+    }
+}

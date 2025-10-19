@@ -1,4 +1,5 @@
 @page "/settings"
+@implements IDisposable
 
 <h3>Settings</h3>
 
@@ -30,6 +31,31 @@
     </div>
     
     <div class="settings-section">
+        <h2>Screen State & Presence</h2>
+        <div class="setting-item">
+            <label>Current State</label>
+            <p class="state-badge state-@currentState.ToString().ToLower()">@currentState</p>
+        </div>
+        <div class="setting-item">
+            <label>In Night Mode Schedule</label>
+            <p>@(isNightModeSchedule ? "Yes" : "No")</p>
+        </div>
+        <div class="setting-item">
+            <label>Last State Change</label>
+            <p>@(lastStateChange?.ToString("HH:mm:ss") ?? "N/A") - @lastStateChangeReason</p>
+        </div>
+        <div class="setting-item">
+            <label>Test State Transitions</label>
+            <div class="button-group">
+                <button class="btn btn-primary" @onclick="() => TransitionTo(FamilyWall.Core.Models.ScreenState.Interactive)">Interactive</button>
+                <button class="btn btn-secondary" @onclick="() => TransitionTo(FamilyWall.Core.Models.ScreenState.Off)">Off</button>
+                <button class="btn btn-warning" @onclick="() => TransitionTo(FamilyWall.Core.Models.ScreenState.NightLive)">Night Live</button>
+                <button class="btn btn-info" @onclick="() => TransitionTo(FamilyWall.Core.Models.ScreenState.Ambient)">Ambient</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="settings-section">
         <h2>Night Mode</h2>
         <div class="setting-item">
             <label>Enabled</label>
@@ -42,6 +68,10 @@
         <div class="setting-item">
             <label>Motion Threshold</label>
             <p>@settings?.NightMode.MotionThreshold</p>
+        </div>
+        <div class="setting-item">
+            <label>Inactivity Timeout</label>
+            <p>@settings?.NightMode.InactivityTimeoutSeconds seconds</p>
         </div>
     </div>
     
@@ -108,15 +138,131 @@
         font-size: 0.9em;
         margin-top: 2rem;
     }
+
+    .state-badge {
+        display: inline-block;
+        padding: 0.5rem 1rem;
+        border-radius: 4px;
+        font-weight: 600;
+        font-size: 1.1em;
+    }
+
+    .state-interactive {
+        background-color: #28a745;
+        color: white;
+    }
+
+    .state-off {
+        background-color: #6c757d;
+        color: white;
+    }
+
+    .state-nightlive {
+        background-color: #fd7e14;
+        color: white;
+    }
+
+    .state-ambient {
+        background-color: #17a2b8;
+        color: white;
+    }
+
+    .button-group {
+        display: flex;
+        gap: 0.5rem;
+        flex-wrap: wrap;
+    }
+
+    .btn {
+        padding: 0.5rem 1rem;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+        font-weight: 600;
+        transition: all 0.2s;
+    }
+
+    .btn:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+    }
+
+    .btn-primary {
+        background-color: #28a745;
+        color: white;
+    }
+
+    .btn-secondary {
+        background-color: #6c757d;
+        color: white;
+    }
+
+    .btn-warning {
+        background-color: #fd7e14;
+        color: white;
+    }
+
+    .btn-info {
+        background-color: #17a2b8;
+        color: white;
+    }
 </style>
 
 @code {
     private FamilyWall.Core.Settings.AppSettings? settings;
-    
+    private FamilyWall.Core.Models.ScreenState currentState;
+    private bool isNightModeSchedule;
+    private DateTime? lastStateChange;
+    private string? lastStateChangeReason;
+
     [Inject] private Microsoft.Extensions.Options.IOptions<FamilyWall.Core.Settings.AppSettings>? Options { get; set; }
-    
+    [Inject] private FamilyWall.Core.Abstractions.IScreenStateService? ScreenStateService { get; set; }
+
     protected override void OnInitialized()
     {
         settings = Options?.Value;
+
+        if (ScreenStateService != null)
+        {
+            currentState = ScreenStateService.CurrentState;
+            isNightModeSchedule = ScreenStateService.IsNightModeSchedule();
+
+            // Subscribe to state changes
+            ScreenStateService.StateChanged += OnStateChanged;
+        }
+
+        // Update schedule check periodically
+        var timer = new System.Threading.Timer(_ =>
+        {
+            if (ScreenStateService != null)
+            {
+                isNightModeSchedule = ScreenStateService.IsNightModeSchedule();
+                InvokeAsync(StateHasChanged);
+            }
+        }, null, TimeSpan.FromSeconds(30), TimeSpan.FromSeconds(30));
+    }
+
+    private void OnStateChanged(object? sender, FamilyWall.Core.Abstractions.ScreenStateChangedEventArgs e)
+    {
+        currentState = e.NewState;
+        lastStateChange = e.TransitionedAt.ToLocalTime();
+        lastStateChangeReason = e.Reason;
+        InvokeAsync(StateHasChanged);
+    }
+
+    private async Task TransitionTo(FamilyWall.Core.Models.ScreenState newState)
+    {
+        if (ScreenStateService != null)
+        {
+            await ScreenStateService.TransitionToAsync(newState, "Manual transition from Settings");
+        }
+    }
+
+    public void Dispose()
+    {
+        if (ScreenStateService != null)
+        {
+            ScreenStateService.StateChanged -= OnStateChanged;
+        }
     }
 }

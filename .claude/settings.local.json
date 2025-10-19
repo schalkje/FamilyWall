@@ -7,7 +7,9 @@
       "Bash(dotnet add \"C:\\repo\\FamilyWall\\src\\FamilyWall.Infrastructure\\FamilyWall.Infrastructure.csproj\" package Microsoft.EntityFrameworkCore.Design)",
       "Bash(dotnet build)",
       "Bash(dotnet build -f net9.0-windows10.0.19041.0)",
-      "Bash(dotnet clean)"
+      "Bash(dotnet clean)",
+      "Bash(dir \"C:\\repo\\FamilyWall\\src\\FamilyWall.Core\" /s /b)",
+      "Bash(dotnet clean \"c:\\repo\\FamilyWall\\src\\FamilyWall.App\")"
     ],
     "deny": [],
     "ask": []
