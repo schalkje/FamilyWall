@@ -18,6 +18,6 @@ Keywords: together · warmth · flow · memory · calm · presence
 
 Let’s define a visual identity system for FamilyWall — warm, elegant, and calm; tech-forward but deeply human.
 
-![Passive mode mockup](./design/images/mockup-passive-mode.png)
+![Passive mode mockup](./documents/design/images/mockup-passive-mode.png)
 
 
