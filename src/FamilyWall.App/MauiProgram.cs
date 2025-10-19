@@ -1,6 +1,7 @@
 ﻿using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Configuration;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Maui.LifecycleEvents;
 using FamilyWall.Core.Settings;
 using FamilyWall.Core.Abstractions;
 using FamilyWall.Infrastructure;
@@ -9,6 +10,9 @@ using FamilyWall.Services;
 using FamilyWall.Integrations.Graph;
 using FamilyWall.Integrations.HA;
 using System.Reflection;
+#if WINDOWS
+using FamilyWall.App.WinUI;
+#endif
 
 namespace FamilyWall.App;
 
@@ -71,6 +75,29 @@ public static class MauiProgram
 #if DEBUG
 		builder.Services.AddBlazorWebViewDeveloperTools();
 		builder.Logging.AddDebug();
+#endif
+
+		// Configure Windows fullscreen kiosk mode
+#if WINDOWS
+		builder.ConfigureLifecycleEvents(events =>
+		{
+			events.AddWindows(wndLifeCycleBuilder =>
+			{
+				wndLifeCycleBuilder.OnWindowCreated(window =>
+				{
+					// Get window handle and AppWindow
+					IntPtr hWnd = WinRT.Interop.WindowNative.GetWindowHandle(window);
+					Microsoft.UI.WindowId windowId = Microsoft.UI.Win32Interop.GetWindowIdFromWindow(hWnd);
+					var appWindow = Microsoft.UI.Windowing.AppWindow.GetFromWindowId(windowId);
+
+					// Set to fullscreen mode immediately on startup
+					appWindow.SetPresenter(Microsoft.UI.Windowing.AppWindowPresenterKind.FullScreen);
+
+					// Store references for F11 toggle support
+					FamilyWall.App.WinUI.WindowStateManager.Initialize(window, appWindow);
+				});
+			});
+		});
 #endif
 
 		var app = builder.Build();

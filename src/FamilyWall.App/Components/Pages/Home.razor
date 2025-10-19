@@ -1,5 +1,6 @@
 @page "/"
 @implements IDisposable
+@layout FullScreenLayout
 
 <PageTitle>FamilyWall</PageTitle>
 
@@ -50,7 +51,7 @@
                     {
                         @foreach (var evt in upcomingEvents.Take(3))
                         {
-                            <div class="event-item">
+                            <div class="event-item clickable" @onclick="() => NavigateToCalendar()">
                                 <span class="event-time">@evt.Time</span>
                                 <span class="event-title">@evt.Title</span>
                             </div>
@@ -279,6 +280,18 @@
             border-bottom: none;
         }
 
+        .event-item.clickable {
+            cursor: pointer;
+            padding: 0.75rem 1rem;
+            margin: 0 -1rem;
+            border-radius: 8px;
+            transition: background-color 0.2s ease;
+        }
+
+            .event-item.clickable:hover {
+                background-color: rgba(255, 255, 255, 0.1);
+            }
+
     .event-time {
         font-weight: 600;
         min-width: 80px;
@@ -376,6 +389,7 @@
     [Inject] private FamilyWall.Core.Abstractions.IIndexingStatusService? IndexingStatusService { get; set; }
     [Inject] private FamilyWall.App.Services.PhotoUrlService? PhotoUrlService { get; set; }
     [Inject] private Microsoft.Extensions.Options.IOptions<FamilyWall.Core.Settings.AppSettings>? Settings { get; set; }
+    [Inject] private Microsoft.AspNetCore.Components.NavigationManager? NavigationManager { get; set; }
 
     protected override async Task OnInitializedAsync()
     {
@@ -510,6 +524,11 @@
     private string GetPhotoUrl()
     {
         return currentPhotoDataUrl;
+    }
+
+    private void NavigateToCalendar()
+    {
+        NavigationManager?.NavigateTo("/calendar");
     }
 
     public void Dispose()
