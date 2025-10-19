@@ -8,6 +8,8 @@ Purpose: Replace the traditional wall calendar with a smart, wall-mounted touch 
 
 Out of scope for this document: specific platforms, frameworks, devices, or integrations. See `architecture.md` for technical choices.
 
+Execution constraint: The application runs entirely on the local device with no owned cloud components (no Azure/AWS/GCP Functions, services, or databases). It may connect directly to existing services (e.g., Microsoft/Google calendars) and to LAN resources (e.g., NAS, Home Assistant) from the device.
+
 ---
 
 ## 2. Modes and Experience
@@ -86,6 +88,8 @@ Detailed requirements for Night Mode and Home Control are maintained in dedicate
   - By default, photos and camera frames are processed locally; no cloud uploads without explicit opt-in.
   - Recording is off by default except when in night mode; if enabled, users control retention and storage location; a clear on-screen indicator shows when the live camera is visible.
   - night mode recording is on by default, with a retention of 3 days
+  - Secrets (tokens, passwords) are stored using local OS facilities (e.g., Windows Credential Locker/DPAPI). No external secret stores.
+  - No telemetry is sent to external services unless the user opts in; when enabled, telemetry remains local or LAN-only where feasible.
 - Kiosk & Safety
   - Full-screen operation with minimal OS chrome; prevent unintended sleeps during the day.
   - Provide a quick manual “Good night” action and a simple way to dismiss Night Mode live view.

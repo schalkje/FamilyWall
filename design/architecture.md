@@ -6,16 +6,20 @@ This document centralizes technology choices, implementation details, and system
 
 
 
-## 1. Technology Stack (Proposed)
+## 1. Technology Stack (Local-only)
 
 - UI / Frontend: Blazor Hybrid (.NET 9 MAUI) with offline support and touchscreen input
-- Backend / Data API: .NET 9 Minimal/Web API (optional; local-first app)
-- Storage: OneDrive and NAS for photos; SQLite (local) for application metadata
-- Calendar Integration: Microsoft Graph API (Google Calendar support later)
-- Sensors: On-board camera/mics and USB-connected devices using default Windows device APIs (Windows ML/OpenCV optional); external PIR via ESP32 over MQTT optional
-- Sync/Background Jobs: Optional Azure Functions or background services
+- App Runtime: Single-process local app (no separate backend). Optional local Windows service/background worker if needed for scheduling or indexing. No cloud-hosted components.
+- Storage: NAS (SMB/WebDAV) as primary photo source; OneDrive via Microsoft Graph/OneDrive API (connected application). SQLite (local) for app metadata, cache, and offline data.
+- Calendar Integration: Client-side Microsoft Graph and/or Google Calendar APIs using OAuth device code flow, or ICS/CalDAV where available. All calls are made directly from the device; no server-side middle tier.
+- Sensors: On-device camera/mics and USB-connected devices via Windows APIs (Windows ML/OpenCV optional); optional external PIR via ESP32 over LAN/MQTT.
+- Background Jobs: In-app background services or optional local Windows service. No Azure Functions or other cloud workers.
 
 - Rendering: Prefer WebView2/CSS animations where feasible under kiosk constraints; use native (WinUI/Skia) paths only when low-latency or composition requirements demand it.
+
+Operational constraints:
+- No owned cloud infrastructure (Azure, AWS, etc.). The app may connect to existing third-party services (e.g., Microsoft/Google calendars, Home Assistant on LAN) directly from the device.
+- Secrets are stored locally via Windows Credential Locker/DPAPI. No Azure Key Vault.
 
 Notes: Final selections may evolve; track changes here with rationale.
 
@@ -34,11 +38,12 @@ Notes: Final selections may evolve; track changes here with rationale.
 
 ```mermaid
 flowchart TD
-		A[Surface App UI] --> B[HomeController API]
-		B --> C[Storage: Photos + SQLite]
-		A --> D[Calendar APIs]
+		A[Surface App (UI + Local Services)] --> C[Local Storage: SQLite + Cache]
+		A --> P[NAS Photos (SMB/WebDAV or local synced folder)]
+		A --> D[Calendar Providers (Graph/Google/ICS/CalDAV)]
 		A --> E[Sensors: Camera/PIR]
-		A --> F[MQTT Broker optional]
+		A --> H[Home Assistant (LAN)]
+		A --> M[MQTT (existing broker, optional)]
 ```
 
 Layers and suggested technologies:
@@ -46,11 +51,11 @@ Layers and suggested technologies:
 | Layer | Component | Technology Suggestion |
 | --- | --- | --- |
 | UI / Frontend | Wall Display App | Blazor Hybrid (.NET 9 MAUI) |
-| Backend / Data API | HomeController API | .NET 9 Minimal/Web API (optional) |
-| Storage | Photos & Metadata | OneDrive + NAS (photos) + SQLite (local metadata) |
-| Calendar Integration | Outlook / Google | Microsoft Graph API (Google later) |
-| Sensors | Motion Detection | On-board Surface sensors or USB; Windows ML/OpenCV; PIR via ESP32 over MQTT (optional) |
-| Sync | Photo sync, ratings, events | Background tasks / Azure Functions (optional) |
+| App Services | Local background/indexing | .NET hosted services in-app; optional local Windows service |
+| Storage | Photos & Metadata | NAS (SMB/WebDAV) + OneDrive API (Graph) + local cache; SQLite (local metadata) |
+| Calendar Integration | Outlook / Google | Client-side Microsoft Graph / Google APIs; ICS/CalDAV where available |
+| Sensors | Motion Detection | On-board Surface sensors or USB; Windows ML/OpenCV; PIR via ESP32 over LAN/MQTT (optional) |
+| Sync | Photo indexing, ratings, events | Local background tasks only (no cloud) |
 
 ---
 
@@ -74,8 +79,10 @@ Implementation notes:
 
 ## 5. Photo Module
 
-- Sources: Local folder, OneDrive, or Google Photos API
-- Source priority: Prefer NAS as the primary photo source, while keeping a recency bias so newer OneDrive photos are still surfaced regularly.
+- Sources: NAS (primary) and OneDrive via Microsoft Graph/OneDrive API (connected app); optional additional local folders
+- Source priority: Prefer NAS as the primary photo source while integrating OneDrive recency bias so newer cloud photos are surfaced periodically.
+- Auth: Device Code flow OAuth for Microsoft account; store tokens in Windows Credential Locker; refresh tokens handled on-device.
+- Caching: Maintain a local photo cache and metadata index (SQLite) for smooth offline behavior.
 - Selection logic: same date in prior years; fallback ±3 days
 - Interactive features: swipe, favorite/rate, map location from EXIF, details view, browse-by-date
 - Caching and prefetch for smooth transitions
@@ -85,7 +92,7 @@ Implementation notes:
 
 ## 6. Calendar Module
 
-- Integrations: Microsoft Graph / Google Calendar
+- Integrations: Client-side Microsoft Graph / Google Calendar (OAuth device code flow), or ICS/CalDAV where available
 - Display: today + next 7 days; birthday highlighting
 - Interactive: add/edit appointments, recurring dates, filters (personal/family/work)
 
@@ -109,9 +116,9 @@ Objective: At bedtime the display is off while camera monitors motion; on motion
 - Prevent OS sleep; allow backlight-off
 - Follow platform best practices for Modern Standby and MAUI/WinUI background operation to keep the capture pipeline warm while the display is off, within device power constraints.
 
-### 7.3 Privacy & Recording
+-### 7.3 Privacy & Recording
 - On-device processing only by default
-- Optional ring buffer (10–30 s) and local encrypted clips (Windows DPAPI/Key Vault)
+- Optional ring buffer (10–30 s) and local encrypted clips (Windows DPAPI)
 - On-screen LIVE indicator when preview is visible
 
 Defaults and consent:
@@ -153,7 +160,7 @@ Chosen for MVP: Hybrid. Start with embedding a Lovelace view to achieve coverage
 ### 8.3 Communication Paths
 - WebSocket: `/api/websocket` (subscribe to `state_changed`)
 - REST: `/api/services/<domain>/<service>` for actions
-- MQTT: Device publishes local sensors; MQTT Discovery for HA auto-add
+- MQTT: Device publishes local sensors; MQTT Discovery for HA auto-add (use existing broker on LAN; do not host a cloud broker)
 
 ### 8.4 Entities via MQTT Discovery
 
@@ -260,6 +267,8 @@ action:
 - Configure network and certs for HA connectivity
 - Use a dedicated Windows kiosk user account with automatic login and least-privilege access to required resources only.
 
+Local-only guideline: Updates are applied manually or via LAN file share; no cloud telemetry or auto-update services are required.
+
 ---
 
 ## 10. Open Questions / Decisions
@@ -267,4 +276,5 @@ action:
 Open questions
 - Background/lifecycle strategy details for keeping the camera capture pipeline warm while the display is off (specific Modern Standby configurations and constraints)
 - Exact Night Mode motion thresholds after field testing; if minimal filtering proves insufficient, define day/night profiles and hysteresis values
+- Calendar write support: choose primary path (Graph/Google client-side vs. CalDAV) given the constraint of no owned cloud components
 
