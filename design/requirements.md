@@ -84,7 +84,7 @@ Detailed requirements for Night Mode and Home Control are maintained in dedicate
   - The system should recover gracefully from temporary errors without user intervention.
 - Privacy & Security
   - By default, photos and camera frames are processed locally; no cloud uploads without explicit opt-in.
-  - Recording is off by default; if enabled, users control retention and storage location; a clear on-screen indicator shows when the live camera is visible.
+  - Recording is off by default except when in night mode; if enabled, users control retention and storage location; a clear on-screen indicator shows when the live camera is visible.
   - night mode recording is on by default, with a retention of 3 days
 - Kiosk & Safety
   - Full-screen operation with minimal OS chrome; prevent unintended sleeps during the day.

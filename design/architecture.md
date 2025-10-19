@@ -4,13 +4,7 @@ This document centralizes technology choices, implementation details, and system
 
 ---
 
-## Decisions (Oct 18, 2025)
 
-- UI: Blazor Hybrid (.NET 9 MAUI)
-- Calendar: Microsoft Graph API first; Google Calendar may be added later
-- Sensors: On-board Surface sensors or USB-connected; prefer default Windows devices/APIs
-- Data: SQLite running locally for application data
-- Photos: OneDrive and NAS as picture sources
 
 ## 1. Technology Stack (Proposed)
 
@@ -20,6 +14,8 @@ This document centralizes technology choices, implementation details, and system
 - Calendar Integration: Microsoft Graph API (Google Calendar support later)
 - Sensors: On-board camera/mics and USB-connected devices using default Windows device APIs (Windows ML/OpenCV optional); external PIR via ESP32 over MQTT optional
 - Sync/Background Jobs: Optional Azure Functions or background services
+
+- Rendering: Prefer WebView2/CSS animations where feasible under kiosk constraints; use native (WinUI/Skia) paths only when low-latency or composition requirements demand it.
 
 Notes: Final selections may evolve; track changes here with rationale.
 
@@ -64,19 +60,26 @@ Layers and suggested technologies:
 - Passive → Interactive on approach; revert after inactivity
 - Night Mode entry by schedule/manual/ambient conditions
 
+- Default Interactive Mode on Presence: Configurable – choose a fixed mode (e.g., Calendar) or resume last-used mode on approach.
+- Dwell/Passerby Heuristic: Avoid triggering interactive mode for passersby using dwell-time and motion-velocity thresholds within a region-of-interest; provide configurable thresholds with sensible defaults to be tuned with testing.
+- Sensor fusion: Use the best signals from all available sensors (camera motion, optional face detection, and PIR/ultrasonic if present). Fuse signals for robustness and define sensible fallback ordering when certain sensors are unavailable.
+
 Implementation notes:
 - Camera: Windows `MediaCapture`/DirectShow capture pipeline
 - Motion detection: OpenCV frame differencing + morphology; adaptive thresholds
 - Power: Prevent system sleep; allow display-off with Modern Standby policies
+- Preview/UI composition: Low-latency camera preview via native MAUI/WinUI control; UI overlays via XAML, or place Blazor WebView adjacent without compositing over preview when needed for performance.
 
 ---
 
 ## 5. Photo Module
 
 - Sources: Local folder, OneDrive, or Google Photos API
+- Source priority: Prefer NAS as the primary photo source, while keeping a recency bias so newer OneDrive photos are still surfaced regularly.
 - Selection logic: same date in prior years; fallback ±3 days
 - Interactive features: swipe, favorite/rate, map location from EXIF, details view, browse-by-date
 - Caching and prefetch for smooth transitions
+- Offline behavior: When offline, continue showing the last cached photo and cycle through available cached media until connectivity returns.
 
 ---
 
@@ -85,6 +88,9 @@ Implementation notes:
 - Integrations: Microsoft Graph / Google Calendar
 - Display: today + next 7 days; birthday highlighting
 - Interactive: add/edit appointments, recurring dates, filters (personal/family/work)
+
+- Birthdays Source: Prefer Microsoft Contacts/People birthdays; fallback to the generated Birthday Calendar when contacts are unavailable.
+- Offline Edits: Editing is disabled when offline. Show read-only views and a clear “offline” indicator; resume editing on reconnect.
 
 ---
 
@@ -96,15 +102,20 @@ Objective: At bedtime the display is off while camera monitors motion; on motion
 - Camera capture via `MediaCapture`/DirectShow
 - Analyze ~10–15 fps; throttle when idle
 - OpenCV frame differencing; dynamic thresholds; morphological filtering
+- Initial thresholds: Start with minimal/no additional thresholding and evaluate in real environments; introduce filtering/hysteresis only if necessary based on observed false positives.
 
 ### 7.2 Performance & Power
 - Keep pipeline warm for sub-300 ms wake-to-live
 - Prevent OS sleep; allow backlight-off
+- Follow platform best practices for Modern Standby and MAUI/WinUI background operation to keep the capture pipeline warm while the display is off, within device power constraints.
 
 ### 7.3 Privacy & Recording
 - On-device processing only by default
 - Optional ring buffer (10–30 s) and local encrypted clips (Windows DPAPI/Key Vault)
 - On-screen LIVE indicator when preview is visible
+
+Defaults and consent:
+- Recording is off by default overall. In Night Mode specifically, motion-triggered clip recording is enabled by default with a 3‑day retention, provided the user granted explicit consent on first run. Users can change retention and recording at any time.
 
 ### 7.4 Fail-safes
 - Watchdog to restart pipeline on stall
@@ -131,6 +142,8 @@ Goal: Use the panel as both a control surface and a device in Home Assistant (HA
 - Option A: Embedded HA UI (Edge/Chromium kiosk or companion app if available)
 - Option B: Native control panel using HA WebSocket + REST
 - Hybrid: Native quick actions + embedded Lovelace view
+
+Chosen for MVP: Hybrid. Start with embedding a Lovelace view to achieve coverage quickly; progressively add native quick actions (lights/scenes/favorites) for low-latency control.
 
 ### 8.2 Auth & Security
 - Long-Lived Access Token (LLAT) stored in Windows Credential Locker
@@ -189,6 +202,8 @@ Runtime topics:
 - Devices drawer: search entities; favorites
 - Optional SVG floorplan with entity bindings
 
+- Accessibility: Start with best-effort sizes and contrast for 1–3 m readability; iterate based on user feedback and real-world testing.
+
 ### 8.6 Native Quick Actions
 
 HTTP examples:
@@ -243,13 +258,13 @@ action:
 - Auto-launch app on user login
 - Suppress sleep during day-time modes
 - Configure network and certs for HA connectivity
+- Use a dedicated Windows kiosk user account with automatic login and least-privilege access to required resources only.
 
 ---
 
 ## 10. Open Questions / Decisions
 
-- Final choice between Blazor Hybrid vs PWA
-- Preferred photo source priority
-- Exact Night Mode thresholds and defaults
-- HA integration approach: A, B, or Hybrid
+Open questions
+- Background/lifecycle strategy details for keeping the camera capture pipeline warm while the display is off (specific Modern Standby configurations and constraints)
+- Exact Night Mode motion thresholds after field testing; if minimal filtering proves insufficient, define day/night profiles and hysteresis values
 

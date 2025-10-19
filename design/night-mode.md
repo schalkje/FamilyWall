@@ -24,12 +24,11 @@ At configured bedtime, the display turns off (screen black). When motion is dete
 - Provide a one-tap Dismiss to hide the live view immediately; long-press exits Night Mode entirely
 
 ## 4. Privacy & Safety
-- Processing is local by default; no frames uploaded or stored without explicit opt-in
-- Recording is off by default; if enabled:
-  - Use a rolling buffer (e.g., 10–30 s) and allow a "save" gesture
+- Processing is local by default; no frames uploaded without explicit opt-in
+- Recording is on by default; if enabled:
+  - Use a rolling buffer (e.g., 10–30 s)
   - Let users choose retention days and storage location
 - Show a clear visual indicator when the live camera is on-screen
-- Guest Mode: temporarily disable recording
 
 ## 5. Configuration
 - Bedtime schedule per weekday, with holiday overrides
