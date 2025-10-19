@@ -9,7 +9,8 @@
       "Bash(dotnet build -f net9.0-windows10.0.19041.0)",
       "Bash(dotnet clean)",
       "Bash(dir \"C:\\repo\\FamilyWall\\src\\FamilyWall.Core\" /s /b)",
-      "Bash(dotnet clean \"c:\\repo\\FamilyWall\\src\\FamilyWall.App\")"
+      "Bash(dotnet clean \"c:\\repo\\FamilyWall\\src\\FamilyWall.App\")",
+      "Bash(dotnet build \"c:\\repo\\FamilyWall\\src\\FamilyWall.App\\FamilyWall.App.csproj\" -f net9.0-windows10.0.19041.0)"
     ],
     "deny": [],
     "ask": []

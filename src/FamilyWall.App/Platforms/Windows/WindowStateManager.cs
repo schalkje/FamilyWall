@@ -20,6 +20,7 @@ public static class WindowStateManager
 	public static void SetCoreWebView2(CoreWebView2 coreWebView)
 	{
 		_coreWebView = coreWebView;
+		System.Diagnostics.Debug.WriteLine("🎹 WindowStateManager: CoreWebView2 set successfully");
 	}
 
 	public static void OnWebMessageReceived(CoreWebView2 sender, CoreWebView2WebMessageReceivedEventArgs args)
@@ -27,18 +28,22 @@ public static class WindowStateManager
 		try
 		{
 			var message = args.WebMessageAsJson;
+			System.Diagnostics.Debug.WriteLine($"🎹 WindowStateManager: Received message: {message}");
+
 			if (message.Contains("toggleFullscreen"))
 			{
+				System.Diagnostics.Debug.WriteLine("🎹 WindowStateManager: Toggling fullscreen");
 				ToggleFullscreen();
 			}
 			else if (message.Contains("navigateInteractive"))
 			{
+				System.Diagnostics.Debug.WriteLine("🎹 WindowStateManager: Navigating to interactive mode");
 				NavigateToInteractive();
 			}
 		}
-		catch
+		catch (Exception ex)
 		{
-			// Ignore message parsing errors
+			System.Diagnostics.Debug.WriteLine($"🎹 WindowStateManager: Error processing message: {ex.Message}");
 		}
 	}
 
