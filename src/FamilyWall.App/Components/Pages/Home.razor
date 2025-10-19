@@ -34,37 +34,66 @@
                 <img src="@GetPhotoUrl()" alt="Photo of the day" class="fullscreen-photo" />
             </div>
 
-            <!-- Bottom overlay with date/time and upcoming events -->
-            <div class="bottom-overlay">
-                <div class="date-time-section">
-                    <div class="date">@currentTime.ToString("ddd, MMM dd")</div>
-                    <div class="time">@currentTime.ToString("HH:mm")</div>
-                    @if (!string.IsNullOrEmpty(weather))
-                    {
-                        <div class="weather">@weather</div>
-                    }
-                </div>
-
-                <div class="upcoming-section">
-                    <div class="upcoming-header">📅 Upcoming</div>
-                    @if (upcomingEvents.Any())
-                    {
-                        @foreach (var evt in upcomingEvents.Take(3))
-                        {
-                            <div class="event-item clickable" @onclick="() => NavigateToCalendar()">
-                                <span class="event-time">@evt.Time</span>
-                                <span class="event-title">@evt.Title</span>
-                            </div>
-                        }
-                    }
-                    else
-                    {
-                        <div class="no-events">No upcoming events</div>
-                    }
-                </div>
+            <!-- Top-left overlay: Month name only -->
+            <div class="top-left-overlay">
+                <div class="month-name">@GetMonthName(currentTime)</div>
             </div>
 
-            <!-- Subtle photo info (bottom-left corner, very subtle) -->
+            <!-- Bottom overlay with 7-column calendar view -->
+            <div class="bottom-overlay">
+                @foreach (var day in weekDays)
+                {
+                    <div class="calendar-column @(day.IsToday ? "today" : "")">
+                        @* Birthday area - absolutely positioned above header *@
+                        <div class="birthday-area">
+                            @if (day.Birthdays.Any())
+                            {
+                                @foreach (var birthday in day.Birthdays)
+                                {
+                                    <div class="birthday-item clickable" @onclick="() => NavigateToCalendar()">
+                                        <span class="birthday-icon">🎂</span>
+                                        <span class="birthday-name">@birthday.Title</span>
+                                    </div>
+                                }
+                            }
+                        </div>
+
+                        @* Column content - header and events *@
+                        <div class="column-content">
+                            <div class="day-header">
+                                @GetDayName(day.Date) @day.Date.Day
+                                @if (day.IsToday && !string.IsNullOrEmpty(weather))
+                                {
+                                    <span class="weather-inline">@weather</span>
+                                }
+                            </div>
+
+                            @* Regular events *@
+                            <div class="events-area">
+                                @if (day.Events.Any())
+                                {
+                                    var eventsToShow = day.Events.Take(3);
+                                    @foreach (var evt in eventsToShow)
+                                    {
+                                        <div class="event-item clickable" @onclick="() => NavigateToCalendar()">
+                                            <span class="event-time">@evt.Time</span>
+                                            <span class="event-title">@evt.Title</span>
+                                        </div>
+                                    }
+
+                                    @* More events indicator *@
+                                    @if (day.Events.Count > 3)
+                                    {
+                                        <div class="more-events">+ @(day.Events.Count - 3) more</div>
+                                    }
+                                }
+                            </div>
+                        </div>
+                    </div>
+                }
+            </div>
+
+            <!-- Photo date badge (top-right corner) -->
             @if (currentPhoto.TakenUtc.HasValue)
             {
                 <div class="photo-date-badge">
@@ -93,12 +122,9 @@
                     }
                 </div>
 
-                <!-- Still show date/time overlay -->
-                <div class="bottom-overlay">
-                    <div class="date-time-section">
-                        <div class="date">@currentTime.ToString("ddd, MMM dd")</div>
-                        <div class="time">@currentTime.ToString("HH:mm")</div>
-                    </div>
+                <!-- Still show month name overlay -->
+                <div class="top-left-overlay">
+                    <div class="month-name">@GetMonthName(currentTime)</div>
                 </div>
             </div>
         }
@@ -215,65 +241,128 @@
         }
     }
 
+    /* Top-left overlay: Month name only */
+    .top-left-overlay {
+        position: absolute;
+        top: 2rem;
+        left: 3rem;
+        z-index: 10;
+        color: white;
+        text-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
+    }
+
+    .month-name {
+        font-size: 4rem;
+        font-weight: 700;
+        line-height: 1;
+        letter-spacing: 0.5px;
+    }
+
+    /* Weather inline in today's column header */
+    .weather-inline {
+        font-size: 1.2rem;
+        opacity: 0.85;
+        margin-left: 0.5rem;
+    }
+
+    /* Bottom overlay: 7-column calendar */
     .bottom-overlay {
         position: absolute;
         bottom: 0;
         left: 0;
         right: 0;
         background: linear-gradient(to top, rgba(0,0,0,0.85), rgba(0,0,0,0.6) 70%, transparent);
-        padding: 2rem 3rem 2rem 3rem;
+        padding: 2rem 3rem;
         z-index: 10;
         display: flex;
-        justify-content: space-between;
-        align-items: flex-end;
-        gap: 3rem;
+        gap: 1.5rem;
+        color: white;
     }
 
-    .date-time-section {
+    .calendar-column {
         display: flex;
         flex-direction: column;
-        gap: 0.5rem;
-        color: white;
-    }
-
-    .date {
-        font-size: 2rem;
-        font-weight: 300;
-        letter-spacing: 0.5px;
-    }
-
-    .time {
-        font-size: 4rem;
-        font-weight: 700;
-        line-height: 1;
-        font-variant-numeric: tabular-nums;
-    }
-
-    .weather {
-        font-size: 1.5rem;
-        opacity: 0.9;
-        margin-top: 0.5rem;
-    }
-
-    .upcoming-section {
         flex: 1;
-        max-width: 600px;
-        color: white;
+        min-width: 0;
+        position: relative;
+        padding-top: 3rem; /* Space for birthdays above */
     }
 
-    .upcoming-header {
+        .calendar-column.today {
+            flex-grow: 2;
+        }
+
+    /* Birthday area - absolutely positioned above header */
+    .birthday-area {
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        display: flex;
+        flex-direction: column;
+        gap: 0.25rem;
+        align-items: center;
+    }
+
+    .birthday-item {
+        display: flex;
+        gap: 0.5rem;
+        align-items: center;
+        padding: 0.25rem 0.5rem;
+        cursor: pointer;
+        border-radius: 6px;
+        transition: background-color 0.2s ease;
+    }
+
+        .birthday-item:hover {
+            background-color: rgba(255, 255, 255, 0.1);
+        }
+
+    .birthday-icon {
+        font-size: 1.2em;
+        text-shadow: 0 0 8px rgba(248, 180, 0, 0.8),
+                     0 0 12px rgba(248, 180, 0, 0.6),
+                     0 2px 4px rgba(0, 0, 0, 0.5);
+        filter: drop-shadow(0 0 4px rgba(248, 180, 0, 0.9));
+    }
+
+    .birthday-name {
+        color: #F8B400;
+        font-weight: 600;
+        font-size: 1rem;
+        text-shadow: 0 0 8px rgba(248, 180, 0, 0.6),
+                     0 0 12px rgba(248, 180, 0, 0.4),
+                     0 2px 4px rgba(0, 0, 0, 0.5);
+    }
+
+    /* Column content - aligned across all columns */
+    .column-content {
+        display: flex;
+        flex-direction: column;
+        gap: 0.375rem;
+    }
+
+    .day-header {
         font-size: 1.3rem;
         font-weight: 600;
-        margin-bottom: 1rem;
         opacity: 0.95;
+        margin-bottom: 0.5rem;
+        white-space: nowrap;
+    }
+
+    .events-area {
+        display: flex;
+        flex-direction: column;
+        gap: 0.375rem;
     }
 
     .event-item {
         display: flex;
-        gap: 1.5rem;
-        padding: 0.75rem 0;
+        gap: 0.5rem;
+        padding: 0.5rem;
+        font-size: 1rem;
         border-bottom: 1px solid rgba(255, 255, 255, 0.2);
-        font-size: 1.2rem;
+        align-items: center;
     }
 
         .event-item:last-child {
@@ -282,8 +371,6 @@
 
         .event-item.clickable {
             cursor: pointer;
-            padding: 0.75rem 1rem;
-            margin: 0 -1rem;
             border-radius: 8px;
             transition: background-color 0.2s ease;
         }
@@ -294,25 +381,34 @@
 
     .event-time {
         font-weight: 600;
-        min-width: 80px;
         opacity: 0.9;
+        white-space: nowrap;
+    }
+
+    .calendar-column.today .event-time {
+        min-width: 80px;
     }
 
     .event-title {
         flex: 1;
         opacity: 0.95;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
     }
 
-    .no-events {
-        font-size: 1.1rem;
-        opacity: 0.6;
+    .more-events {
+        font-size: 1rem;
+        opacity: 0.7;
         font-style: italic;
+        padding: 0.25rem 0.5rem;
     }
 
+    /* Photo date badge - moved to top-right */
     .photo-date-badge {
         position: absolute;
-        bottom: 2rem;
-        left: 3rem;
+        top: 2rem;
+        right: 3rem;
         background: rgba(0, 0, 0, 0.5);
         color: rgba(255, 255, 255, 0.7);
         padding: 0.5rem 1rem;
@@ -379,7 +475,8 @@
     private DateTime currentTime = DateTime.Now;
     private string currentPhotoDataUrl = "";
     private string weather = "☀ 14°C";
-    private List<UpcomingEvent> upcomingEvents = new();
+    private List<DayColumn> weekDays = new();
+    private string currentLanguage = "nl"; // Default to Dutch
     private System.Threading.Timer? autoAdvanceTimer;
     private System.Threading.Timer? clockTimer;
     private System.Threading.Timer? photoCheckTimer;
@@ -436,8 +533,8 @@
             }
         }, null, TimeSpan.FromSeconds(2), TimeSpan.FromSeconds(2));
 
-        // Load mock upcoming events
-        LoadUpcomingEvents();
+        // Load mock upcoming events for 7 days
+        LoadWeekEvents();
     }
 
     private void OnStateChanged(object? sender, FamilyWall.Core.Abstractions.ScreenStateChangedEventArgs e)
@@ -510,15 +607,137 @@
         autoAdvanceTimer = null;
     }
 
-    private void LoadUpcomingEvents()
+    private void LoadWeekEvents()
     {
         // Mock data - will be replaced with real calendar integration in milestone 4
-        upcomingEvents = new List<UpcomingEvent>
+        weekDays = new List<DayColumn>();
+        var today = DateTime.Today;
+
+        for (int i = 0; i < 7; i++)
         {
-            new UpcomingEvent { Time = "15:00", Title = "Birthday - Chris" },
-            new UpcomingEvent { Time = "17:30", Title = "Dentist Appointment" },
-            new UpcomingEvent { Time = "Tomorrow", Title = "Team Meeting" }
-        };
+            var date = today.AddDays(i);
+            var dayColumn = new DayColumn
+            {
+                Date = date,
+                IsToday = i == 0
+            };
+
+            // Mock birthdays
+            if (i == 0) // Today
+            {
+                dayColumn.Birthdays.Add(new CalendarEvent { Title = "Chris" });
+            }
+            else if (i == 3) // 3 days from now
+            {
+                dayColumn.Birthdays.Add(new CalendarEvent { Title = "Sarah" });
+            }
+
+            // Mock regular events
+            if (i == 0) // Today - show all events
+            {
+                dayColumn.Events.Add(new CalendarEvent { Time = "09:00", Title = "Morning Meeting" });
+                dayColumn.Events.Add(new CalendarEvent { Time = "14:00", Title = "Doctor Appointment" });
+                dayColumn.Events.Add(new CalendarEvent { Time = "17:30", Title = "Dentist" });
+                dayColumn.Events.Add(new CalendarEvent { Time = "19:00", Title = "Dinner with Friends" });
+            }
+            else if (i == 1) // Tomorrow
+            {
+                dayColumn.Events.Add(new CalendarEvent { Time = "10:00", Title = "Team Standup" });
+                dayColumn.Events.Add(new CalendarEvent { Time = "15:00", Title = "Project Review" });
+            }
+            else if (i == 2) // Day after tomorrow
+            {
+                dayColumn.Events.Add(new CalendarEvent { Time = "11:00", Title = "Client Call" });
+                dayColumn.Events.Add(new CalendarEvent { Time = "14:00", Title = "Workshop" });
+                dayColumn.Events.Add(new CalendarEvent { Time = "16:00", Title = "Training Session" });
+                dayColumn.Events.Add(new CalendarEvent { Time = "18:00", Title = "Dinner" });
+                dayColumn.Events.Add(new CalendarEvent { Time = "20:00", Title = "Movie Night" });
+            }
+            else if (i == 4) // 4 days from now
+            {
+                dayColumn.Events.Add(new CalendarEvent { Time = "13:00", Title = "Lunch Meeting" });
+            }
+
+            weekDays.Add(dayColumn);
+        }
+    }
+
+    private string GetDayName(DateTime date)
+    {
+        if (currentLanguage == "nl")
+        {
+            // Dutch day names
+            return date.DayOfWeek switch
+            {
+                DayOfWeek.Monday => "Maandag",
+                DayOfWeek.Tuesday => "Dinsdag",
+                DayOfWeek.Wednesday => "Woensdag",
+                DayOfWeek.Thursday => "Donderdag",
+                DayOfWeek.Friday => "Vrijdag",
+                DayOfWeek.Saturday => "Zaterdag",
+                DayOfWeek.Sunday => "Zondag",
+                _ => ""
+            };
+        }
+        else
+        {
+            // English day names
+            return date.DayOfWeek switch
+            {
+                DayOfWeek.Monday => "Monday",
+                DayOfWeek.Tuesday => "Tuesday",
+                DayOfWeek.Wednesday => "Wednesday",
+                DayOfWeek.Thursday => "Thursday",
+                DayOfWeek.Friday => "Friday",
+                DayOfWeek.Saturday => "Saturday",
+                DayOfWeek.Sunday => "Sunday",
+                _ => ""
+            };
+        }
+    }
+
+    private string GetMonthName(DateTime date)
+    {
+        if (currentLanguage == "nl")
+        {
+            // Dutch month names
+            return date.Month switch
+            {
+                1 => "Januari",
+                2 => "Februari",
+                3 => "Maart",
+                4 => "April",
+                5 => "Mei",
+                6 => "Juni",
+                7 => "Juli",
+                8 => "Augustus",
+                9 => "September",
+                10 => "Oktober",
+                11 => "November",
+                12 => "December",
+                _ => ""
+            };
+        }
+        else
+        {
+            // English month names
+            return date.Month switch
+            {
+                1 => "January",
+                2 => "February",
+                3 => "March",
+                4 => "April",
+                5 => "May",
+                6 => "June",
+                7 => "July",
+                8 => "August",
+                9 => "September",
+                10 => "October",
+                11 => "November",
+                12 => "December",
+                _ => ""
+            };
+        }
     }
 
     private string GetPhotoUrl()
@@ -548,7 +767,15 @@
         }
     }
 
-    private class UpcomingEvent
+    private class DayColumn
+    {
+        public DateTime Date { get; set; }
+        public bool IsToday { get; set; }
+        public List<CalendarEvent> Birthdays { get; set; } = new();
+        public List<CalendarEvent> Events { get; set; } = new();
+    }
+
+    private class CalendarEvent
     {
         public string Time { get; set; } = "";
         public string Title { get; set; } = "";
