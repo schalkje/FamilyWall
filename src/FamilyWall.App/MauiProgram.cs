@@ -48,10 +48,12 @@ public static class MauiProgram
 			options.UseSqlite($"Data Source={dbPath}");
 		});
 		builder.Services.AddSingleton<ITokenStore>(sp => new CredentialLockerTokenStore(appDataPath));
-		builder.Services.AddSingleton<IPhotoIndex, PhotoIndex>();
+		builder.Services.AddScoped<IPhotoIndex, PhotoIndex>();
+		builder.Services.AddSingleton<FamilyWall.Core.Abstractions.IIndexingStatusService, IndexingStatusService>();
+		builder.Services.AddScoped<FamilyWall.Core.Abstractions.IPhotoScanService, FamilyWall.Services.PhotoScanService>();
+		builder.Services.AddSingleton<FamilyWall.App.Services.PhotoUrlService>();
 
 		// Background Services
-		builder.Services.AddHostedService<PhotoIndexingService>();
 		builder.Services.AddHostedService<PresenceService>();
 
 		// Integrations
@@ -75,6 +77,29 @@ public static class MauiProgram
 			var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
 			dbContext.Database.EnsureCreated();
 		}
+
+		// Trigger initial photo scan in background after app starts
+		Task.Run(async () =>
+		{
+			await Task.Delay(3000); // Wait 3 seconds for app to fully initialize
+
+			try
+			{
+				using var scope = app.Services.CreateScope();
+				var loggerFactory = scope.ServiceProvider.GetRequiredService<ILoggerFactory>();
+				var logger = loggerFactory.CreateLogger("PhotoScanStartup");
+				logger.LogInformation("=== STARTUP SCAN: Starting initial photo scan ===");
+
+				var photoScanService = scope.ServiceProvider.GetRequiredService<FamilyWall.Core.Abstractions.IPhotoScanService>();
+				await photoScanService.ScanAllSourcesAsync();
+				logger.LogInformation("=== STARTUP SCAN: Initial photo scan completed ===");
+			}
+			catch (Exception ex)
+			{
+				Console.WriteLine($"STARTUP SCAN ERROR: {ex.Message}");
+				Console.WriteLine($"Stack: {ex.StackTrace}");
+			}
+		});
 
 		return app;
 	}

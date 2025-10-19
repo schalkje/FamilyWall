@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(dir \"C:\\repo\\FamilyWall\\src\\FamilyWall.Infrastructure\" /s /b)",
+      "Bash(dotnet add \"C:\\repo\\FamilyWall\\src\\FamilyWall.Services\\FamilyWall.Services.csproj\" package MetadataExtractor)",
+      "Bash(dotnet tool install --global dotnet-ef)",
+      "Bash(dotnet add \"C:\\repo\\FamilyWall\\src\\FamilyWall.Infrastructure\\FamilyWall.Infrastructure.csproj\" package Microsoft.EntityFrameworkCore.Design)",
+      "Bash(dotnet build)",
+      "Bash(dotnet build -f net9.0-windows10.0.19041.0)",
+      "Bash(dotnet clean)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}
