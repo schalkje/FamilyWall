@@ -1,0 +1,102 @@
+@page "/calendar"
+
+<h3>Calendar</h3>
+
+<div class="calendar-page">
+    <h1>Upcoming Events</h1>
+    
+    <div class="events-container">
+        @if (events.Any())
+        {
+            @foreach (var evt in events)
+            {
+                <div class="event-card @(evt.IsBirthday ? "birthday" : "")">
+                    <div class="event-time">
+                        @evt.StartUtc.ToLocalTime().ToString("MMM dd, yyyy")
+                        @if (!evt.IsAllDay)
+                        {
+                            <span>at @evt.StartUtc.ToLocalTime().ToString("h:mm tt")</span>
+                        }
+                    </div>
+                    <div class="event-title">@evt.Title</div>
+                    @if (evt.IsBirthday)
+                    {
+                        <div class="birthday-icon">🎂</div>
+                    }
+                </div>
+            }
+        }
+        else
+        {
+            <div class="empty-state">
+                <p>No calendar events found.</p>
+                <p class="hint">Configure calendar providers in appsettings.json → App:Calendar:Providers</p>
+            </div>
+        }
+    </div>
+</div>
+
+<style>
+    .calendar-page {
+        padding: 2rem;
+        max-width: 800px;
+        margin: 0 auto;
+    }
+    
+    .events-container {
+        margin-top: 2rem;
+    }
+    
+    .event-card {
+        background: white;
+        border-left: 4px solid #512BD4;
+        padding: 1rem;
+        margin-bottom: 1rem;
+        border-radius: 4px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    
+    .event-card.birthday {
+        border-left-color: #ff6b6b;
+        background: #fff5f5;
+    }
+    
+    .event-time {
+        font-size: 0.9em;
+        color: #666;
+        margin-bottom: 0.5rem;
+    }
+    
+    .event-title {
+        font-weight: 600;
+        font-size: 1.1em;
+    }
+    
+    .birthday-icon {
+        margin-top: 0.5rem;
+        font-size: 1.5em;
+    }
+    
+    .empty-state {
+        text-align: center;
+        padding: 3rem;
+        color: #999;
+    }
+    
+    .hint {
+        font-size: 0.9em;
+        margin-top: 0.5rem;
+    }
+</style>
+
+@code {
+    private List<FamilyWall.Core.Models.CalendarEvent> events = new();
+    
+    // TODO: Inject calendar service when implemented
+    
+    protected override async Task OnInitializedAsync()
+    {
+        // Stub: In real implementation, fetch from CalendarService
+        await Task.CompletedTask;
+    }
+}

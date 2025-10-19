@@ -1,0 +1,122 @@
+@page "/photos"
+
+<PageTitle>Photos</PageTitle>
+
+<div class="photos-page">
+    <h1>Photo Slideshow</h1>
+    
+    <div class="slideshow-container">
+        @if (currentPhoto != null)
+        {
+            <div class="photo-display">
+                <p>@currentPhoto.Path</p>
+                <p class="metadata">
+                    @if (currentPhoto.TakenUtc.HasValue)
+                    {
+                        <span>Taken: @currentPhoto.TakenUtc.Value.ToLocalTime().ToString("MMMM dd, yyyy")</span>
+                    }
+                    @if (currentPhoto.Favorite)
+                    {
+                        <span class="favorite">⭐ Favorite</span>
+                    }
+                </p>
+            </div>
+        }
+        else
+        {
+            <div class="empty-state">
+                <p>No photos indexed yet. The PhotoIndexingService will scan configured sources.</p>
+                <p class="hint">Check appsettings.json → App:Photos:Sources</p>
+            </div>
+        }
+    </div>
+    
+    <div class="controls">
+        <button class="btn btn-primary" @onclick="NextPhoto">Next Photo</button>
+        <button class="btn btn-secondary" @onclick="ToggleFavorite" disabled="@(currentPhoto == null)">
+            @(currentPhoto?.Favorite == true ? "Unfavorite" : "Favorite")
+        </button>
+    </div>
+</div>
+
+<style>
+    .photos-page {
+        padding: 2rem;
+        max-width: 1200px;
+        margin: 0 auto;
+    }
+    
+    .slideshow-container {
+        min-height: 400px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: #f5f5f5;
+        border-radius: 8px;
+        margin: 2rem 0;
+        padding: 2rem;
+    }
+    
+    .photo-display, .empty-state {
+        text-align: center;
+    }
+    
+    .metadata {
+        margin-top: 1rem;
+        color: #666;
+    }
+    
+    .favorite {
+        margin-left: 1rem;
+    }
+    
+    .controls {
+        display: flex;
+        gap: 1rem;
+        justify-content: center;
+    }
+    
+    .hint {
+        font-size: 0.9em;
+        color: #999;
+        margin-top: 0.5rem;
+    }
+</style>
+
+@code {
+    private FamilyWall.Core.Models.Media? currentPhoto;
+    
+    [Inject] private FamilyWall.Core.Abstractions.IPhotoIndex? PhotoIndex { get; set; }
+    
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadNextPhoto();
+    }
+    
+    private async Task LoadNextPhoto()
+    {
+        if (PhotoIndex != null)
+        {
+            currentPhoto = await PhotoIndex.GetNextPhotoAsync();
+            if (currentPhoto != null)
+            {
+                await PhotoIndex.RecordShownAsync(currentPhoto.Id);
+            }
+        }
+    }
+    
+    private async Task NextPhoto()
+    {
+        await LoadNextPhoto();
+    }
+    
+    private async Task ToggleFavorite()
+    {
+        if (currentPhoto != null && PhotoIndex != null)
+        {
+            await PhotoIndex.ToggleFavoriteAsync(currentPhoto.Id);
+            // Reload to reflect updated favorite status
+            await LoadNextPhoto();
+        }
+    }
+}

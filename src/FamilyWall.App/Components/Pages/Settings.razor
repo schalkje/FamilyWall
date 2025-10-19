@@ -1,0 +1,122 @@
+@page "/settings"
+
+<h3>Settings</h3>
+
+<div class="settings-page">
+    <h1>Settings</h1>
+    
+    <div class="settings-section">
+        <h2>Photos</h2>
+        <div class="setting-item">
+            <label>Slideshow Interval (seconds)</label>
+            <p>@settings?.Photos.SlideshowIntervalSeconds</p>
+        </div>
+        <div class="setting-item">
+            <label>Cache Size (MB)</label>
+            <p>@settings?.Photos.CacheSizeMb</p>
+        </div>
+        <div class="setting-item">
+            <label>Configured Sources</label>
+            <ul>
+                @if (settings?.Photos.Sources != null)
+                {
+                    @foreach (var source in settings.Photos.Sources)
+                    {
+                        <li>@source.Type: @source.Path (@(source.Enabled ? "Enabled" : "Disabled"))</li>
+                    }
+                }
+            </ul>
+        </div>
+    </div>
+    
+    <div class="settings-section">
+        <h2>Night Mode</h2>
+        <div class="setting-item">
+            <label>Enabled</label>
+            <p>@settings?.NightMode.Enabled</p>
+        </div>
+        <div class="setting-item">
+            <label>Schedule</label>
+            <p>@settings?.NightMode.StartTime - @settings?.NightMode.EndTime</p>
+        </div>
+        <div class="setting-item">
+            <label>Motion Threshold</label>
+            <p>@settings?.NightMode.MotionThreshold</p>
+        </div>
+    </div>
+    
+    <div class="settings-section">
+        <h2>Privacy</h2>
+        <div class="setting-item">
+            <label>Recording Consent</label>
+            <p>@settings?.Privacy.RecordingConsent</p>
+        </div>
+        <div class="setting-item">
+            <label>Night Mode Recording</label>
+            <p>@settings?.Privacy.NightModeRecordingEnabled (Retention: @settings?.Privacy.RetentionDays days)</p>
+        </div>
+    </div>
+    
+    <p class="hint">To modify settings, edit appsettings.user.json in the app data directory.</p>
+</div>
+
+<style>
+    .settings-page {
+        padding: 2rem;
+        max-width: 900px;
+        margin: 0 auto;
+    }
+    
+    .settings-section {
+        background: white;
+        border-radius: 8px;
+        padding: 1.5rem;
+        margin-bottom: 2rem;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    
+    .settings-section h2 {
+        margin-top: 0;
+        border-bottom: 2px solid #512BD4;
+        padding-bottom: 0.5rem;
+    }
+    
+    .setting-item {
+        margin-bottom: 1rem;
+    }
+    
+    .setting-item label {
+        font-weight: 600;
+        display: block;
+        margin-bottom: 0.25rem;
+        color: #333;
+    }
+    
+    .setting-item p {
+        margin: 0;
+        color: #666;
+    }
+    
+    .setting-item ul {
+        margin: 0.5rem 0;
+        padding-left: 1.5rem;
+    }
+    
+    .hint {
+        text-align: center;
+        color: #999;
+        font-size: 0.9em;
+        margin-top: 2rem;
+    }
+</style>
+
+@code {
+    private FamilyWall.Core.Settings.AppSettings? settings;
+    
+    [Inject] private Microsoft.Extensions.Options.IOptions<FamilyWall.Core.Settings.AppSettings>? Options { get; set; }
+    
+    protected override void OnInitialized()
+    {
+        settings = Options?.Value;
+    }
+}
