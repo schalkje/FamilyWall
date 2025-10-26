@@ -1,6 +1,7 @@
 @page "/"
 @implements IDisposable
 @layout FullScreenLayout
+@using Microsoft.EntityFrameworkCore
 
 <PageTitle>FamilyWall</PageTitle>
 
@@ -492,6 +493,7 @@
     private System.Threading.Timer? clockTimer;
     private System.Threading.Timer? photoCheckTimer;
     private System.Threading.Timer? photoViewModeTimer;
+    private System.Threading.Timer? calendarRefreshTimer;
 
     [Inject] private FamilyWall.Core.Abstractions.IPhotoIndex? PhotoIndex { get; set; }
     [Inject] private FamilyWall.Core.Abstractions.IScreenStateService? ScreenStateService { get; set; }
@@ -499,6 +501,7 @@
     [Inject] private FamilyWall.App.Services.PhotoUrlService? PhotoUrlService { get; set; }
     [Inject] private Microsoft.Extensions.Options.IOptions<FamilyWall.Core.Settings.AppSettings>? Settings { get; set; }
     [Inject] private Microsoft.AspNetCore.Components.NavigationManager? NavigationManager { get; set; }
+    [Inject] private FamilyWall.Infrastructure.Data.AppDbContext? DbContext { get; set; }
 
     protected override async Task OnInitializedAsync()
     {
@@ -545,8 +548,18 @@
             }
         }, null, TimeSpan.FromSeconds(2), TimeSpan.FromSeconds(2));
 
-        // Load mock upcoming events for 7 days
-        LoadWeekEvents();
+        // Load real calendar events for 7 days
+        await LoadWeekEventsAsync();
+
+        // Refresh calendar events every 5 minutes
+        calendarRefreshTimer = new System.Threading.Timer(async _ =>
+        {
+            await InvokeAsync(async () =>
+            {
+                await LoadWeekEventsAsync();
+                StateHasChanged();
+            });
+        }, null, TimeSpan.FromMinutes(5), TimeSpan.FromMinutes(5));
     }
 
     private void OnStateChanged(object? sender, FamilyWall.Core.Abstractions.ScreenStateChangedEventArgs e)
@@ -619,55 +632,59 @@
         autoAdvanceTimer = null;
     }
 
-    private void LoadWeekEvents()
+    private async Task LoadWeekEventsAsync()
     {
-        // Mock data - will be replaced with real calendar integration in milestone 4
         weekDays = new List<DayColumn>();
         var today = DateTime.Today;
+        var endDate = today.AddDays(7);
 
+        // Load calendar events from database
+        List<FamilyWall.Core.Models.CalendarEvent> calendarEvents = new();
+        if (DbContext != null)
+        {
+            calendarEvents = await DbContext.CalendarEvents
+                .Where(e => e.StartUtc >= today && e.StartUtc < endDate)
+                .OrderBy(e => e.StartUtc)
+                .ToListAsync();
+        }
+
+        // Group events by day
         for (int i = 0; i < 7; i++)
         {
             var date = today.AddDays(i);
+            var dayStart = date.Date;
+            var dayEnd = dayStart.AddDays(1);
+
             var dayColumn = new DayColumn
             {
                 Date = date,
                 IsToday = i == 0
             };
 
-            // Mock birthdays
-            if (i == 0) // Today
-            {
-                dayColumn.Birthdays.Add(new CalendarEvent { Title = "Chris" });
-            }
-            else if (i == 3) // 3 days from now
-            {
-                dayColumn.Birthdays.Add(new CalendarEvent { Title = "Sarah" });
-            }
+            // Get events for this day
+            var dayEvents = calendarEvents
+                .Where(e => e.StartUtc >= dayStart && e.StartUtc < dayEnd)
+                .ToList();
 
-            // Mock regular events
-            if (i == 0) // Today - show all events
+            foreach (var evt in dayEvents)
             {
-                dayColumn.Events.Add(new CalendarEvent { Time = "09:00", Title = "Morning Meeting" });
-                dayColumn.Events.Add(new CalendarEvent { Time = "14:00", Title = "Doctor Appointment" });
-                dayColumn.Events.Add(new CalendarEvent { Time = "17:30", Title = "Dentist" });
-                dayColumn.Events.Add(new CalendarEvent { Time = "19:00", Title = "Dinner with Friends" });
-            }
-            else if (i == 1) // Tomorrow
-            {
-                dayColumn.Events.Add(new CalendarEvent { Time = "10:00", Title = "Team Standup" });
-                dayColumn.Events.Add(new CalendarEvent { Time = "15:00", Title = "Project Review" });
-            }
-            else if (i == 2) // Day after tomorrow
-            {
-                dayColumn.Events.Add(new CalendarEvent { Time = "11:00", Title = "Client Call" });
-                dayColumn.Events.Add(new CalendarEvent { Time = "14:00", Title = "Workshop" });
-                dayColumn.Events.Add(new CalendarEvent { Time = "16:00", Title = "Training Session" });
-                dayColumn.Events.Add(new CalendarEvent { Time = "18:00", Title = "Dinner" });
-                dayColumn.Events.Add(new CalendarEvent { Time = "20:00", Title = "Movie Night" });
-            }
-            else if (i == 4) // 4 days from now
-            {
-                dayColumn.Events.Add(new CalendarEvent { Time = "13:00", Title = "Lunch Meeting" });
+                // Separate birthdays from regular events
+                if (evt.IsBirthday)
+                {
+                    dayColumn.Birthdays.Add(new CalendarEvent
+                    {
+                        Time = "",
+                        Title = evt.Title
+                    });
+                }
+                else
+                {
+                    dayColumn.Events.Add(new CalendarEvent
+                    {
+                        Time = evt.IsAllDay ? "" : evt.StartUtc.ToLocalTime().ToString("HH:mm"),
+                        Title = evt.Title
+                    });
+                }
             }
 
             weekDays.Add(dayColumn);
@@ -794,6 +811,7 @@
         clockTimer?.Dispose();
         photoCheckTimer?.Dispose();
         photoViewModeTimer?.Dispose();
+        calendarRefreshTimer?.Dispose();
 
         if (ScreenStateService != null)
         {
