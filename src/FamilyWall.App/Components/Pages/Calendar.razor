@@ -1,10 +1,30 @@
 @page "/calendar"
+@using Microsoft.EntityFrameworkCore
 
 <h3>Calendar</h3>
 
 <div class="calendar-page">
-    <h1>Upcoming Events</h1>
-    
+    <div class="calendar-header">
+        <h1>Upcoming Events</h1>
+        @if (activeCalendarNames.Count > 0)
+        {
+            <div class="syncing-calendars">
+                <span class="label">Syncing:</span>
+                @foreach (var calName in activeCalendarNames)
+                {
+                    <span class="calendar-badge">@calName</span>
+                }
+            </div>
+        }
+        else if (isAuthenticated)
+        {
+            <div class="syncing-calendars">
+                <span class="label">Syncing:</span>
+                <span class="calendar-badge">Default Calendar</span>
+            </div>
+        }
+    </div>
+
     <div class="events-container">
         @if (events.Any())
         {
@@ -30,7 +50,14 @@
         {
             <div class="empty-state">
                 <p>No calendar events found.</p>
-                <p class="hint">Configure calendar providers in appsettings.json → App:Calendar:Providers</p>
+                @if (!isAuthenticated)
+                {
+                    <p class="hint">Please authenticate with Microsoft Graph in Settings to sync calendar events.</p>
+                }
+                else
+                {
+                    <p class="hint">Waiting for calendar sync... Events will appear shortly.</p>
+                }
             </div>
         }
     </div>
@@ -42,7 +69,40 @@
         max-width: 800px;
         margin: 0 auto;
     }
-    
+
+    .calendar-header {
+        margin-bottom: 1.5rem;
+    }
+
+    .calendar-header h1 {
+        margin-bottom: 0.75rem;
+    }
+
+    .syncing-calendars {
+        display: flex;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+        margin-top: 0.5rem;
+    }
+
+    .syncing-calendars .label {
+        font-size: 0.9em;
+        color: #666;
+        font-weight: 600;
+    }
+
+    .calendar-badge {
+        display: inline-block;
+        padding: 0.35rem 0.65rem;
+        background-color: #e7f3ff;
+        border: 1px solid #2196F3;
+        color: #0d47a1;
+        border-radius: 4px;
+        font-size: 0.85em;
+        font-weight: 500;
+    }
+
     .events-container {
         margin-top: 2rem;
     }
@@ -90,13 +150,56 @@
 </style>
 
 @code {
+    [Inject] private FamilyWall.Infrastructure.Data.AppDbContext DbContext { get; set; } = default!;
+    [Inject] private FamilyWall.Integrations.Graph.IGraphClient GraphClient { get; set; } = default!;
+    [Inject] private Microsoft.Extensions.Options.IOptions<FamilyWall.Core.Settings.AppSettings> Options { get; set; } = default!;
+
     private List<FamilyWall.Core.Models.CalendarEvent> events = new();
-    
-    // TODO: Inject calendar service when implemented
-    
+    private bool isAuthenticated = false;
+    private List<string> activeCalendarNames = new();
+
     protected override async Task OnInitializedAsync()
     {
-        // Stub: In real implementation, fetch from CalendarService
-        await Task.CompletedTask;
+        // Check if authenticated with Microsoft Graph
+        isAuthenticated = await GraphClient.IsAuthenticatedAsync();
+
+        // Load active calendar names
+        await LoadActiveCalendarNamesAsync();
+
+        // Load events from database (cached from CalendarSyncService)
+        await LoadEventsAsync();
+    }
+
+    private async Task LoadActiveCalendarNamesAsync()
+    {
+        if (!isAuthenticated) return;
+
+        var settings = Options.Value;
+        if (settings?.Graph?.CalendarIds?.Count > 0)
+        {
+            try
+            {
+                var calendars = await GraphClient.GetCalendarsAsync();
+                activeCalendarNames = settings.Graph.CalendarIds
+                    .Select(id => calendars.FirstOrDefault(c => c.Id == id)?.Name ?? id)
+                    .ToList();
+            }
+            catch
+            {
+                // Silently fail - will show IDs or nothing
+                activeCalendarNames = settings.Graph.CalendarIds.ToList();
+            }
+        }
+    }
+
+    private async Task LoadEventsAsync()
+    {
+        var today = DateTime.Today;
+        var endDate = today.AddDays(90);
+
+        events = await DbContext.CalendarEvents
+            .Where(e => e.StartUtc >= today && e.StartUtc <= endDate)
+            .OrderBy(e => e.StartUtc)
+            .ToListAsync();
     }
 }

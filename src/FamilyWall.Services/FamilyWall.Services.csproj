@@ -3,6 +3,7 @@
   <ItemGroup>
     <ProjectReference Include="..\FamilyWall.Core\FamilyWall.Core.csproj" />
     <ProjectReference Include="..\FamilyWall.Infrastructure\FamilyWall.Infrastructure.csproj" />
+    <ProjectReference Include="..\FamilyWall.Integrations.Graph\FamilyWall.Integrations.Graph.csproj" />
   </ItemGroup>
 
   <ItemGroup>

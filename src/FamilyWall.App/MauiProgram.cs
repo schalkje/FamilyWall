@@ -46,11 +46,21 @@ public static class MauiProgram
 		// Infrastructure
 		var appDataPath = FileSystem.AppDataDirectory;
 		builder.Services.AddSingleton<IDbPathProvider>(sp => new DbPathProvider(appDataPath));
+
+		// Use DbContextFactory for better concurrency support in background services
+		builder.Services.AddDbContextFactory<AppDbContext>((sp, options) =>
+		{
+			var dbPath = sp.GetRequiredService<IDbPathProvider>().GetDbPath();
+			options.UseSqlite($"Data Source={dbPath}");
+		});
+
+		// Also register DbContext for Blazor pages (scoped)
 		builder.Services.AddDbContext<AppDbContext>((sp, options) =>
 		{
 			var dbPath = sp.GetRequiredService<IDbPathProvider>().GetDbPath();
 			options.UseSqlite($"Data Source={dbPath}");
 		});
+
 		builder.Services.AddSingleton<ITokenStore>(sp => new CredentialLockerTokenStore(appDataPath));
 		builder.Services.AddScoped<IPhotoIndex, PhotoIndex>();
 		builder.Services.AddSingleton<FamilyWall.Core.Abstractions.IIndexingStatusService, IndexingStatusService>();
@@ -63,9 +73,10 @@ public static class MauiProgram
 
 		// Background Services
 		builder.Services.AddHostedService<PresenceService>();
+		builder.Services.AddHostedService<CalendarSyncService>();
 
 		// Integrations
-		builder.Services.AddHttpClient<IGraphClient, GraphClient>();
+		builder.Services.AddSingleton<IGraphClient, GraphClient>();
 		builder.Services.AddSingleton<IHomeAssistantClient, HomeAssistantClient>();
 		builder.Services.AddSingleton<IMqttClientFactory, MqttClientFactory>();
 

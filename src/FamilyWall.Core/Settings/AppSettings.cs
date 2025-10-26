@@ -4,6 +4,7 @@ public class AppSettings
 {
     public PhotoSettings Photos { get; set; } = new();
     public CalendarSettings Calendar { get; set; } = new();
+    public GraphSettings Graph { get; set; } = new();
     public NightModeSettings NightMode { get; set; } = new();
     public HomeAssistantSettings HomeAssistant { get; set; } = new();
     public MqttSettings Mqtt { get; set; } = new();
@@ -31,6 +32,15 @@ public class CalendarSettings
     public List<string> Providers { get; set; } = new() { "Graph" }; // "Graph", "Google", "ICS"
     public int CacheTtlMinutes { get; set; } = 15;
     public bool ShowBirthdays { get; set; } = true;
+}
+
+public class GraphSettings
+{
+    public string ClientId { get; set; } = string.Empty;
+    public string TenantId { get; set; } = "consumers"; // "consumers" for personal Microsoft accounts, "common" for work/school + personal, or specific tenant ID
+    public string[] Scopes { get; set; } = new[] { "User.Read", "Calendars.Read", "Files.Read" };
+    public bool Enabled { get; set; } = true;
+    public List<string> CalendarIds { get; set; } = new(); // Empty = sync all calendars, or specify calendar IDs to sync
 }
 
 public class NightModeSettings
