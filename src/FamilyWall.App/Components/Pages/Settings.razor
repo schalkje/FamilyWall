@@ -115,7 +115,39 @@
                 @if (!string.IsNullOrEmpty(deviceCodeMessage))
                 {
                     <div class="alert alert-info">
-                        <pre>@deviceCodeMessage</pre>
+                        @if (!string.IsNullOrEmpty(deviceCodeUrl) && !string.IsNullOrEmpty(deviceCode))
+                        {
+                            <div class="device-code-instructions">
+                                <h4>Sign in to Microsoft</h4>
+                                <ol>
+                                    <li>
+                                        <strong>Click the link below</strong> to open the sign-in page:
+                                        <br/>
+                                        <a href="@deviceCodeUrl" target="_blank" class="auth-link" @onclick="OpenAuthUrl">
+                                            @deviceCodeUrl
+                                        </a>
+                                    </li>
+                                    <li>
+                                        <strong>Enter this code</strong> when prompted (copied to clipboard):
+                                        <br/>
+                                        <div class="code-display">
+                                            <span class="device-code">@deviceCode</span>
+                                            <button class="btn-copy" @onclick="() => CopyToClipboard(deviceCode)">
+                                                📋 Copy Again
+                                            </button>
+                                        </div>
+                                    </li>
+                                    <li>
+                                        <strong>Complete the sign-in</strong> in your browser
+                                    </li>
+                                </ol>
+                                <p class="hint">The code has been copied to your clipboard automatically!</p>
+                            </div>
+                        }
+                        else
+                        {
+                            <pre>@deviceCodeMessage</pre>
+                        }
                     </div>
                 }
             }
@@ -447,6 +479,81 @@
         font-size: 0.9em;
         font-weight: 500;
     }
+
+    .device-code-instructions {
+        text-align: left;
+    }
+
+    .device-code-instructions h4 {
+        margin-top: 0;
+        margin-bottom: 1rem;
+        color: #0c5460;
+    }
+
+    .device-code-instructions ol {
+        padding-left: 1.5rem;
+        line-height: 1.8;
+    }
+
+    .device-code-instructions li {
+        margin-bottom: 1rem;
+    }
+
+    .auth-link {
+        display: inline-block;
+        margin-top: 0.5rem;
+        padding: 0.5rem 1rem;
+        background-color: #007bff;
+        color: white !important;
+        text-decoration: none;
+        border-radius: 4px;
+        font-weight: 600;
+        transition: background-color 0.2s;
+    }
+
+    .auth-link:hover {
+        background-color: #0056b3;
+        text-decoration: none;
+    }
+
+    .code-display {
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+        margin-top: 0.5rem;
+        padding: 1rem;
+        background-color: #f8f9fa;
+        border: 2px dashed #007bff;
+        border-radius: 4px;
+    }
+
+    .device-code {
+        font-family: 'Courier New', monospace;
+        font-size: 1.5em;
+        font-weight: bold;
+        color: #007bff;
+        letter-spacing: 0.2em;
+    }
+
+    .btn-copy {
+        padding: 0.5rem 1rem;
+        background-color: #28a745;
+        color: white;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+        font-weight: 600;
+        transition: all 0.2s;
+    }
+
+    .btn-copy:hover {
+        background-color: #218838;
+        transform: translateY(-2px);
+    }
+
+    .btn-copy:active {
+        transform: translateY(0);
+    }
 </style>
 
 @code {
@@ -460,6 +567,8 @@
     private bool isGraphAuthenticated = false;
     private bool isAuthenticating = false;
     private string? deviceCodeMessage;
+    private string? deviceCodeUrl;
+    private string? deviceCode;
 
     // Calendar discovery state
     private bool isDiscoveringCalendars = false;
@@ -536,20 +645,41 @@
 
         isAuthenticating = true;
         deviceCodeMessage = null;
+        deviceCodeUrl = null;
+        deviceCode = null;
         StateHasChanged();
 
         try
         {
-            var success = await GraphClient.AuthenticateAsync(message =>
+            var success = await GraphClient.AuthenticateAsync(async message =>
             {
                 deviceCodeMessage = message;
-                InvokeAsync(StateHasChanged);
+
+                // Parse the device code message to extract URL and code
+                // Expected format: "To sign in, use a web browser to open the page https://microsoft.com/devicelogin and enter the code ABC123 to authenticate."
+                ParseDeviceCodeMessage(message);
+
+                // Copy device code to clipboard automatically
+                if (!string.IsNullOrEmpty(deviceCode))
+                {
+                    await CopyToClipboard(deviceCode);
+                }
+
+                // Auto-open the URL
+                if (!string.IsNullOrEmpty(deviceCodeUrl))
+                {
+                    await OpenUrlInBrowser(deviceCodeUrl);
+                }
+
+                await InvokeAsync(StateHasChanged);
             });
 
             if (success)
             {
                 isGraphAuthenticated = true;
                 deviceCodeMessage = "✓ Authentication successful! Calendar sync will begin shortly.";
+                deviceCodeUrl = null;
+                deviceCode = null;
             }
             else
             {
@@ -564,6 +694,62 @@
         {
             isAuthenticating = false;
             StateHasChanged();
+        }
+    }
+
+    private void ParseDeviceCodeMessage(string message)
+    {
+        try
+        {
+            // Extract URL (looking for https://... pattern)
+            var urlMatch = System.Text.RegularExpressions.Regex.Match(message, @"https://[^\s]+");
+            if (urlMatch.Success)
+            {
+                deviceCodeUrl = urlMatch.Value;
+            }
+
+            // Extract code (looking for "code" followed by alphanumeric sequence)
+            var codeMatch = System.Text.RegularExpressions.Regex.Match(message, @"code\s+([A-Z0-9]+)", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+            if (codeMatch.Success && codeMatch.Groups.Count > 1)
+            {
+                deviceCode = codeMatch.Groups[1].Value;
+            }
+        }
+        catch
+        {
+            // If parsing fails, just show the original message
+        }
+    }
+
+    private async Task CopyToClipboard(string text)
+    {
+        try
+        {
+            await Microsoft.Maui.ApplicationModel.DataTransfer.Clipboard.SetTextAsync(text);
+        }
+        catch
+        {
+            // Silently fail if clipboard is not available
+        }
+    }
+
+    private async Task OpenAuthUrl()
+    {
+        if (!string.IsNullOrEmpty(deviceCodeUrl))
+        {
+            await OpenUrlInBrowser(deviceCodeUrl);
+        }
+    }
+
+    private async Task OpenUrlInBrowser(string url)
+    {
+        try
+        {
+            await Microsoft.Maui.ApplicationModel.Launcher.OpenAsync(url);
+        }
+        catch
+        {
+            // Silently fail if browser cannot be opened
         }
     }
 

@@ -15,7 +15,7 @@ namespace FamilyWall.Integrations.Graph;
 public interface IGraphClient
 {
     Task<bool> IsAuthenticatedAsync(CancellationToken cancellationToken = default);
-    Task<bool> AuthenticateAsync(Action<string> deviceCodeCallback, CancellationToken cancellationToken = default);
+    Task<bool> AuthenticateAsync(Func<string, Task> deviceCodeCallback, CancellationToken cancellationToken = default);
     Task<List<GraphPhoto>> GetRecentPhotosAsync(int count, CancellationToken cancellationToken = default);
     Task<List<GraphCalendar>> GetCalendarsAsync(CancellationToken cancellationToken = default);
     Task<List<GraphEvent>> GetCalendarEventsAsync(DateTime start, DateTime end, CancellationToken cancellationToken = default);
@@ -73,7 +73,7 @@ public class GraphClient : IGraphClient
         return !string.IsNullOrEmpty(token);
     }
 
-    public async Task<bool> AuthenticateAsync(Action<string> deviceCodeCallback, CancellationToken cancellationToken = default)
+    public async Task<bool> AuthenticateAsync(Func<string, Task> deviceCodeCallback, CancellationToken cancellationToken = default)
     {
         try
         {
@@ -87,10 +87,9 @@ public class GraphClient : IGraphClient
 
             var result = await _publicClientApp!.AcquireTokenWithDeviceCode(
                 _settings.Scopes,
-                deviceCodeResult =>
+                async deviceCodeResult =>
                 {
-                    deviceCodeCallback(deviceCodeResult.Message);
-                    return Task.CompletedTask;
+                    await deviceCodeCallback(deviceCodeResult.Message);
                 })
                 .ExecuteAsync(cancellationToken);
 
