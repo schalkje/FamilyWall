@@ -31,14 +31,20 @@ public class CalendarSyncService : BackgroundService
         _dbContextFactory = dbContextFactory;
         _settings = appSettings.Value.Calendar;
         _logger = logger;
+
+        _logger.LogInformation("CalendarSyncService constructed with CacheTtlMinutes={Minutes}", _settings.CacheTtlMinutes);
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        _logger.LogInformation("CalendarSyncService starting");
+        try
+        {
+            _logger.LogInformation("CalendarSyncService starting");
 
-        // Wait a bit for the app to fully start
-        await Task.Delay(TimeSpan.FromSeconds(5), stoppingToken);
+            // Wait a bit for the app to fully start
+            await Task.Delay(TimeSpan.FromSeconds(5), stoppingToken);
+
+            _logger.LogInformation("CalendarSyncService: Initial delay complete, starting sync loop");
 
         while (!stoppingToken.IsCancellationRequested)
         {
@@ -64,6 +70,12 @@ public class CalendarSyncService : BackgroundService
         }
 
         _logger.LogInformation("CalendarSyncService stopped");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogCritical(ex, "CalendarSyncService failed to start or encountered critical error");
+            throw;
+        }
     }
 
     private async Task SyncCalendarEventsAsync(CancellationToken cancellationToken)
@@ -86,9 +98,26 @@ public class CalendarSyncService : BackgroundService
 
             var graphEvents = await _graphClient.GetCalendarEventsAsync(start, end, cancellationToken);
 
+            _logger.LogInformation("Fetched {Count} events from Microsoft Graph", graphEvents.Count);
+
             if (graphEvents.Count == 0)
             {
-                _logger.LogInformation("No calendar events found");
+                _logger.LogInformation("No calendar events found in the date range");
+
+                // Still update the database to clear old events
+                await using var emptyDbContext = await _dbContextFactory.CreateDbContextAsync(cancellationToken);
+                var allOldEvents = await emptyDbContext.CalendarEvents
+                    .Where(e => e.Source == "Graph")
+                    .ToListAsync(cancellationToken);
+
+                if (allOldEvents.Count > 0)
+                {
+                    emptyDbContext.CalendarEvents.RemoveRange(allOldEvents);
+                    await emptyDbContext.SaveChangesAsync(cancellationToken);
+                    _logger.LogInformation("Cleared {Count} old calendar events", allOldEvents.Count);
+                }
+
+                _lastSyncTime = DateTime.UtcNow;
                 return;
             }
 

@@ -602,26 +602,8 @@
         {
             isGraphAuthenticated = await GraphClient.IsAuthenticatedAsync();
 
-            // If authenticated, load calendar names for display
-            if (isGraphAuthenticated)
-            {
-                try
-                {
-                    availableCalendars = await GraphClient.GetCalendarsAsync();
-                    System.Diagnostics.Debug.WriteLine($"Loaded {availableCalendars.Count} calendars on init");
-                }
-                catch (InvalidOperationException ex) when (ex.Message.Contains("Authentication") || ex.Message.Contains("authenticated"))
-                {
-                    System.Diagnostics.Debug.WriteLine($"Failed to load calendars on init: Auth expired - {ex.Message}");
-                    // Session expired, mark as not authenticated
-                    isGraphAuthenticated = false;
-                }
-                catch (Exception ex)
-                {
-                    System.Diagnostics.Debug.WriteLine($"Failed to load calendars on init: {ex.Message}");
-                    // Silently fail - calendar names will show as IDs
-                }
-            }
+            // Don't auto-load calendars - user should click "Discover Calendars" button
+            // This prevents unnecessary API calls and allows users to pick different default calendars
         }
 
         // Update schedule check periodically

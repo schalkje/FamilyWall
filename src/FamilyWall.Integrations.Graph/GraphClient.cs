@@ -250,14 +250,83 @@ public class GraphClient : IGraphClient
                     var isBirthday = evt.Categories?.Contains("Birthday") == true ||
                                      evt.Subject?.ToLower().Contains("birthday") == true;
 
+                    // Parse datetime with timezone handling
+                    DateTime startUtc, endUtc;
+                    try
+                    {
+                        if (evt.Start?.DateTime != null)
+                        {
+                            var startDateTime = DateTime.Parse(evt.Start.DateTime);
+                            var timeZone = evt.Start.TimeZone ?? "UTC";
+
+                            if (timeZone == "UTC")
+                            {
+                                startUtc = DateTime.SpecifyKind(startDateTime, DateTimeKind.Utc);
+                            }
+                            else
+                            {
+                                try
+                                {
+                                    var tz = TimeZoneInfo.FindSystemTimeZoneById(timeZone);
+                                    startUtc = TimeZoneInfo.ConvertTimeToUtc(startDateTime, tz);
+                                }
+                                catch (TimeZoneNotFoundException)
+                                {
+                                    _logger.LogWarning("Unknown timezone {TimeZone}, assuming local time", timeZone);
+                                    startUtc = DateTime.SpecifyKind(startDateTime, DateTimeKind.Local).ToUniversalTime();
+                                }
+                            }
+                        }
+                        else
+                        {
+                            startUtc = DateTime.MinValue;
+                        }
+
+                        if (evt.End?.DateTime != null)
+                        {
+                            var endDateTime = DateTime.Parse(evt.End.DateTime);
+                            var timeZone = evt.End.TimeZone ?? "UTC";
+
+                            if (timeZone == "UTC")
+                            {
+                                endUtc = DateTime.SpecifyKind(endDateTime, DateTimeKind.Utc);
+                            }
+                            else
+                            {
+                                try
+                                {
+                                    var tz = TimeZoneInfo.FindSystemTimeZoneById(timeZone);
+                                    endUtc = TimeZoneInfo.ConvertTimeToUtc(endDateTime, tz);
+                                }
+                                catch (TimeZoneNotFoundException)
+                                {
+                                    _logger.LogWarning("Unknown timezone {TimeZone}, assuming local time", timeZone);
+                                    endUtc = DateTime.SpecifyKind(endDateTime, DateTimeKind.Local).ToUniversalTime();
+                                }
+                            }
+                        }
+                        else
+                        {
+                            endUtc = DateTime.MinValue;
+                        }
+                    }
+                    catch (Exception dtEx)
+                    {
+                        _logger.LogError(dtEx, "Failed to parse datetime for event {Subject}", evt.Subject);
+                        continue; // Skip this event
+                    }
+
                     graphEvents.Add(new GraphEvent(
                         evt.Id!,
                         evt.Subject ?? "(No subject)",
-                        evt.Start?.DateTime != null ? DateTime.Parse(evt.Start.DateTime) : DateTime.MinValue,
-                        evt.End?.DateTime != null ? DateTime.Parse(evt.End.DateTime) : DateTime.MinValue,
+                        startUtc,
+                        endUtc,
                         evt.IsAllDay ?? false,
                         isBirthday
                     ));
+
+                    _logger.LogDebug("Event: {Subject} at {Start} (TZ: {TimeZone})",
+                        evt.Subject, evt.Start?.DateTime, evt.Start?.TimeZone);
                 }
             }
 

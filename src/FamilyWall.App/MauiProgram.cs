@@ -120,6 +120,23 @@ public static class MauiProgram
 			dbContext.Database.EnsureCreated();
 		}
 
+		// Start hosted services manually (MAUI doesn't auto-start them like ASP.NET Core)
+		Task.Run(async () =>
+		{
+			try
+			{
+				var hostedServices = app.Services.GetServices<Microsoft.Extensions.Hosting.IHostedService>();
+				foreach (var service in hostedServices)
+				{
+					await service.StartAsync(CancellationToken.None);
+				}
+			}
+			catch (Exception ex)
+			{
+				Console.WriteLine($"ERROR starting hosted services: {ex.Message}");
+			}
+		});
+
 		// Trigger initial photo scan in background after app starts
 		Task.Run(async () =>
 		{
