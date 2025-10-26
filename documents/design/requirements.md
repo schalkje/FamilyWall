@@ -131,6 +131,9 @@ Interactive Modes:
 
 ## 9. Future Enhancements
 
+- Inside the calendar page, I want a full calendar
+  - view current full month, + at least a full week before the current week and at leat a full week after the current week
+- on the home screen, when clicking on [to be determined], I want to see a full week in the past, and 4 weeks in the future on the screen
 - Voice commands (e.g., "Show tomorrow's photos", "Add appointment for Friday").
 - Personalization by detected person (e.g., show their calendar) where privacy-appropriate.
 - Expanded home information (weather, lights, household to-do list).
