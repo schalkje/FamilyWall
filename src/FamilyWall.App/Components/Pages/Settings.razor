@@ -118,30 +118,30 @@
                         @if (!string.IsNullOrEmpty(deviceCodeUrl) && !string.IsNullOrEmpty(deviceCode))
                         {
                             <div class="device-code-instructions">
-                                <h4>Sign in to Microsoft</h4>
+                                <h4>📱 Sign in to Microsoft</h4>
                                 <ol>
                                     <li>
-                                        <strong>Click the link below</strong> to open the sign-in page:
+                                        <strong>Click this button</strong> to open the sign-in page in your browser:
                                         <br/>
                                         <a href="@deviceCodeUrl" target="_blank" class="auth-link" @onclick="OpenAuthUrl">
-                                            @deviceCodeUrl
+                                            🌐 Open Sign-In Page
                                         </a>
                                     </li>
                                     <li>
-                                        <strong>Enter this code</strong> when prompted (copied to clipboard):
+                                        <strong>Enter this code</strong> when prompted:
                                         <br/>
                                         <div class="code-display">
                                             <span class="device-code">@deviceCode</span>
                                             <button class="btn-copy" @onclick="() => CopyToClipboard(deviceCode)">
-                                                📋 Copy Again
+                                                📋 Copy Code
                                             </button>
                                         </div>
+                                        <small class="hint">✓ Code automatically copied to clipboard</small>
                                     </li>
                                     <li>
-                                        <strong>Complete the sign-in</strong> in your browser
+                                        <strong>Complete the sign-in</strong> and return to this page
                                     </li>
                                 </ol>
-                                <p class="hint">The code has been copied to your clipboard automatically!</p>
                             </div>
                         }
                         else
@@ -164,6 +164,10 @@
                                 <span class="calendar-badge">@calName</span>
                             }
                         </div>
+                        @if (availableCalendars.Count == 0)
+                        {
+                            <p class="hint" style="color: #dc3545;">⚠️ Calendar names unavailable. Click "Discover Calendars" to reload.</p>
+                        }
                     }
                     else
                     {
@@ -604,9 +608,17 @@
                 try
                 {
                     availableCalendars = await GraphClient.GetCalendarsAsync();
+                    System.Diagnostics.Debug.WriteLine($"Loaded {availableCalendars.Count} calendars on init");
                 }
-                catch
+                catch (InvalidOperationException ex) when (ex.Message.Contains("Authentication") || ex.Message.Contains("authenticated"))
                 {
+                    System.Diagnostics.Debug.WriteLine($"Failed to load calendars on init: Auth expired - {ex.Message}");
+                    // Session expired, mark as not authenticated
+                    isGraphAuthenticated = false;
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"Failed to load calendars on init: {ex.Message}");
                     // Silently fail - calendar names will show as IDs
                 }
             }
@@ -663,12 +675,6 @@
                 if (!string.IsNullOrEmpty(deviceCode))
                 {
                     await CopyToClipboard(deviceCode);
-                }
-
-                // Auto-open the URL
-                if (!string.IsNullOrEmpty(deviceCodeUrl))
-                {
-                    await OpenUrlInBrowser(deviceCodeUrl);
                 }
 
                 await InvokeAsync(StateHasChanged);
@@ -770,17 +776,33 @@
         if (GraphClient == null) return;
 
         isDiscoveringCalendars = true;
+        deviceCodeMessage = null;
         StateHasChanged();
 
         try
         {
+            System.Diagnostics.Debug.WriteLine("DiscoverCalendars: Starting calendar discovery");
             availableCalendars = await GraphClient.GetCalendarsAsync();
+            System.Diagnostics.Debug.WriteLine($"DiscoverCalendars: Loaded {availableCalendars.Count} calendars");
 
             // Load currently configured calendar IDs
             selectedCalendarIds = new HashSet<string>(settings?.Graph.CalendarIds ?? new List<string>());
+            System.Diagnostics.Debug.WriteLine($"DiscoverCalendars: {selectedCalendarIds.Count} calendars selected");
+
+            if (availableCalendars.Count == 0)
+            {
+                deviceCodeMessage = "⚠️ No calendars found. Please check your Microsoft account.";
+            }
+        }
+        catch (InvalidOperationException ex) when (ex.Message.Contains("Authentication") || ex.Message.Contains("authenticated"))
+        {
+            System.Diagnostics.Debug.WriteLine($"DiscoverCalendars: Auth error - {ex.Message}");
+            deviceCodeMessage = "⚠️ Your session has expired. Please sign in again.";
+            isGraphAuthenticated = false;
         }
         catch (Exception ex)
         {
+            System.Diagnostics.Debug.WriteLine($"DiscoverCalendars: Error - {ex.Message}\n{ex.StackTrace}");
             deviceCodeMessage = $"✗ Error discovering calendars: {ex.Message}";
         }
         finally

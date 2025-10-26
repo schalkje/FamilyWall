@@ -129,40 +129,32 @@ public class GraphClient : IGraphClient
 
     public async Task<List<GraphCalendar>> GetCalendarsAsync(CancellationToken cancellationToken = default)
     {
-        try
-        {
-            await EnsureAuthenticatedAsync(cancellationToken);
+        await EnsureAuthenticatedAsync(cancellationToken);
 
-            var calendars = await _graphClient!.Me.Calendars
-                .GetAsync(requestConfig =>
-                {
-                    requestConfig.QueryParameters.Top = 50;
-                    requestConfig.QueryParameters.Select = new[] { "id", "name", "owner", "canEdit", "isDefaultCalendar" };
-                }, cancellationToken);
-
-            var graphCalendars = new List<GraphCalendar>();
-            if (calendars?.Value != null)
+        var calendars = await _graphClient!.Me.Calendars
+            .GetAsync(requestConfig =>
             {
-                foreach (var cal in calendars.Value)
-                {
-                    graphCalendars.Add(new GraphCalendar(
-                        cal.Id!,
-                        cal.Name ?? "(Unnamed calendar)",
-                        cal.Owner?.Name ?? cal.Owner?.Address,
-                        cal.CanEdit ?? false,
-                        cal.IsDefaultCalendar ?? false
-                    ));
-                }
-            }
+                requestConfig.QueryParameters.Top = 50;
+                requestConfig.QueryParameters.Select = new[] { "id", "name", "owner", "canEdit", "isDefaultCalendar" };
+            }, cancellationToken);
 
-            _logger.LogInformation("Fetched {Count} calendars from Microsoft Graph", graphCalendars.Count);
-            return graphCalendars;
-        }
-        catch (Exception ex)
+        var graphCalendars = new List<GraphCalendar>();
+        if (calendars?.Value != null)
         {
-            _logger.LogError(ex, "Failed to fetch calendars from Microsoft Graph");
-            return new List<GraphCalendar>();
+            foreach (var cal in calendars.Value)
+            {
+                graphCalendars.Add(new GraphCalendar(
+                    cal.Id!,
+                    cal.Name ?? "(Unnamed calendar)",
+                    cal.Owner?.Name ?? cal.Owner?.Address,
+                    cal.CanEdit ?? false,
+                    cal.IsDefaultCalendar ?? false
+                ));
+            }
         }
+
+        _logger.LogInformation("Fetched {Count} calendars from Microsoft Graph", graphCalendars.Count);
+        return graphCalendars;
     }
 
     public async Task<List<GraphEvent>> GetCalendarEventsAsync(DateTime start, DateTime end, CancellationToken cancellationToken = default)
@@ -285,11 +277,16 @@ public class GraphClient : IGraphClient
                 await _tokenStore.SetTokenAsync("Graph", string.Join(" ", _settings.Scopes), result.AccessToken, cancellationToken);
                 return;
             }
+            else
+            {
+                // No accounts in MSAL cache, user needs to authenticate
+                throw new InvalidOperationException("Not authenticated. Call AuthenticateAsync first.");
+            }
         }
         catch (MsalUiRequiredException)
         {
             // Silent acquisition failed, user needs to authenticate
-            throw new InvalidOperationException("User authentication required. Please call AuthenticateAsync first.");
+            throw new InvalidOperationException("Authentication expired. Please sign in again.");
         }
     }
 }
