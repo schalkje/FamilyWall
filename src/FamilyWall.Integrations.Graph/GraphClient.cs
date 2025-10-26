@@ -5,6 +5,7 @@ using Microsoft.Extensions.Options;
 using Microsoft.Graph;
 using Microsoft.Graph.Models;
 using Microsoft.Identity.Client;
+using Microsoft.Identity.Client.Extensions.Msal;
 using Microsoft.Kiota.Abstractions.Authentication;
 
 namespace FamilyWall.Integrations.Graph;
@@ -41,7 +42,7 @@ public class GraphClient : IGraphClient
         _logger = logger;
     }
 
-    private Task InitializeClientAsync(CancellationToken cancellationToken = default)
+    private async Task InitializeClientAsync(CancellationToken cancellationToken = default)
     {
         if (_publicClientApp == null)
         {
@@ -50,6 +51,22 @@ public class GraphClient : IGraphClient
                 .WithTenantId(_settings.TenantId)
                 .WithRedirectUri("http://localhost") // Required for device code flow
                 .Build();
+
+            // Enable persistent token caching to survive app restarts
+            var cacheDirectory = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                "FamilyWall");
+            Directory.CreateDirectory(cacheDirectory); // Ensure directory exists
+
+            var storageProperties = new StorageCreationPropertiesBuilder(
+                "familywall_msal_cache.dat",
+                cacheDirectory)
+                .Build();
+
+            var cacheHelper = await MsalCacheHelper.CreateAsync(storageProperties);
+            cacheHelper.RegisterCache(_publicClientApp.UserTokenCache);
+
+            _logger.LogInformation("MSAL token cache initialized at {Path}", storageProperties.CacheFilePath);
         }
 
         if (_graphClient == null)
@@ -57,8 +74,6 @@ public class GraphClient : IGraphClient
             var authProvider = new DeviceCodeAuthenticationProvider(this, _settings.Scopes);
             _graphClient = new Microsoft.Graph.GraphServiceClient(authProvider);
         }
-
-        return Task.CompletedTask;
     }
 
     public async Task<bool> IsAuthenticatedAsync(CancellationToken cancellationToken = default)
@@ -69,8 +84,26 @@ public class GraphClient : IGraphClient
             return false;
         }
 
-        var token = await _tokenStore.GetTokenAsync("Graph", string.Join(" ", _settings.Scopes), cancellationToken);
-        return !string.IsNullOrEmpty(token);
+        try
+        {
+            await InitializeClientAsync(cancellationToken);
+
+            // Check if we have any accounts in the MSAL cache
+            var accounts = await _publicClientApp!.GetAccountsAsync();
+            if (accounts.Any())
+            {
+                _logger.LogInformation("Found {Count} cached accounts", accounts.Count());
+                return true;
+            }
+
+            _logger.LogInformation("No cached accounts found");
+            return false;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error checking authentication status");
+            return false;
+        }
     }
 
     public async Task<bool> AuthenticateAsync(Func<string, Task> deviceCodeCallback, CancellationToken cancellationToken = default)
