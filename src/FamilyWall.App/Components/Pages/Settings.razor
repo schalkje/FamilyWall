@@ -176,9 +176,26 @@
                 </div>
                 <div class="setting-item">
                     <label>Manage Calendars</label>
-                    <button class="btn btn-info" @onclick="DiscoverCalendars" disabled="@isDiscoveringCalendars">
-                        @(isDiscoveringCalendars ? "Loading..." : "Discover Calendars")
-                    </button>
+                    <div class="button-group">
+                        <button class="btn btn-info" @onclick="DiscoverCalendars" disabled="@isDiscoveringCalendars">
+                            @(isDiscoveringCalendars ? "Loading..." : "Discover Calendars")
+                        </button>
+                        <button class="btn btn-success" @onclick="RefreshCalendar" disabled="@isRefreshingCalendar">
+                            @if (isRefreshingCalendar)
+                            {
+                                <span class="spinner">⟳</span>
+                                <span>Refreshing...</span>
+                            }
+                            else
+                            {
+                                <span>🔄 Refresh Events</span>
+                            }
+                        </button>
+                    </div>
+                    @if (!string.IsNullOrEmpty(refreshCalendarMessage))
+                    {
+                        <p class="refresh-message">@refreshCalendarMessage</p>
+                    }
                 </div>
                 @if (availableCalendars.Count > 0)
                 {
@@ -558,6 +575,31 @@
     .btn-copy:active {
         transform: translateY(0);
     }
+
+    .button-group {
+        display: flex;
+        gap: 0.75rem;
+        flex-wrap: wrap;
+    }
+
+    .spinner {
+        display: inline-block;
+        animation: spin 1s linear infinite;
+    }
+
+    @@keyframes spin {
+        from { transform: rotate(0deg); }
+        to { transform: rotate(360deg); }
+    }
+
+    .refresh-message {
+        margin-top: 0.5rem;
+        padding: 0.5rem 1rem;
+        background-color: #E8F5E9;
+        color: #2E7D32;
+        border-radius: 4px;
+        font-size: 0.9em;
+    }
 </style>
 
 @code {
@@ -579,10 +621,15 @@
     private List<FamilyWall.Integrations.Graph.GraphCalendar> availableCalendars = new();
     private HashSet<string> selectedCalendarIds = new();
 
+    // Calendar refresh state
+    private bool isRefreshingCalendar = false;
+    private string refreshCalendarMessage = "";
+
     [Inject] private Microsoft.Extensions.Options.IOptions<FamilyWall.Core.Settings.AppSettings>? Options { get; set; }
     [Inject] private FamilyWall.Core.Abstractions.IScreenStateService? ScreenStateService { get; set; }
     [Inject] private FamilyWall.Integrations.Graph.IGraphClient? GraphClient { get; set; }
     [Inject] private Microsoft.Extensions.Configuration.IConfiguration? Configuration { get; set; }
+    [Inject] private FamilyWall.Services.CalendarSyncService? CalendarSyncService { get; set; }
 
     protected override async Task OnInitializedAsync()
     {
@@ -865,6 +912,43 @@
         }
 
         StateHasChanged();
+    }
+
+    private async Task RefreshCalendar()
+    {
+        if (CalendarSyncService == null || isRefreshingCalendar) return;
+
+        try
+        {
+            isRefreshingCalendar = true;
+            refreshCalendarMessage = "";
+            StateHasChanged();
+
+            // Trigger immediate sync
+            await CalendarSyncService.TriggerSyncAsync();
+
+            refreshCalendarMessage = "✓ Calendar events refreshed successfully! Check the Calendar page to see updates.";
+
+            // Clear message after 5 seconds
+            _ = Task.Run(async () =>
+            {
+                await Task.Delay(5000);
+                await InvokeAsync(() =>
+                {
+                    refreshCalendarMessage = "";
+                    StateHasChanged();
+                });
+            });
+        }
+        catch (Exception ex)
+        {
+            refreshCalendarMessage = $"✗ Error refreshing calendar: {ex.Message}";
+        }
+        finally
+        {
+            isRefreshingCalendar = false;
+            StateHasChanged();
+        }
     }
 
     public void Dispose()

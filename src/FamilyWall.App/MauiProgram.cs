@@ -73,7 +73,10 @@ public static class MauiProgram
 
 		// Background Services
 		builder.Services.AddHostedService<PresenceService>();
-		builder.Services.AddHostedService<CalendarSyncService>();
+
+		// Register CalendarSyncService as singleton first, then add as hosted service
+		builder.Services.AddSingleton<CalendarSyncService>();
+		builder.Services.AddHostedService<CalendarSyncService>(sp => sp.GetRequiredService<CalendarSyncService>());
 
 		// Integrations
 		builder.Services.AddSingleton<IGraphClient, GraphClient>();

@@ -5,7 +5,23 @@
 
 <div class="calendar-page">
     <div class="calendar-header">
-        <h1>Upcoming Events</h1>
+        <div class="header-top">
+            <h1>Upcoming Events</h1>
+            @if (isAuthenticated)
+            {
+                <button class="btn-refresh" @onclick="RefreshCalendar" disabled="@isRefreshing">
+                    @if (isRefreshing)
+                    {
+                        <span class="spinner">⟳</span>
+                        <span>Refreshing...</span>
+                    }
+                    else
+                    {
+                        <span>🔄 Refresh Now</span>
+                    }
+                </button>
+            }
+        </div>
         @if (activeCalendarNames.Count > 0)
         {
             <div class="syncing-calendars">
@@ -22,6 +38,10 @@
                 <span class="label">Syncing:</span>
                 <span class="calendar-badge">Default Calendar</span>
             </div>
+        }
+        @if (!string.IsNullOrEmpty(refreshMessage))
+        {
+            <div class="refresh-message">@refreshMessage</div>
         }
     </div>
 
@@ -74,8 +94,63 @@
         margin-bottom: 1.5rem;
     }
 
-    .calendar-header h1 {
+    .header-top {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
         margin-bottom: 0.75rem;
+    }
+
+    .calendar-header h1 {
+        margin: 0;
+    }
+
+    .btn-refresh {
+        padding: 0.6rem 1.2rem;
+        background-color: #2196F3;
+        color: white;
+        border: none;
+        border-radius: 6px;
+        font-size: 0.95em;
+        font-weight: 500;
+        cursor: pointer;
+        transition: background-color 0.2s ease, transform 0.1s ease;
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+    }
+
+        .btn-refresh:hover:not(:disabled) {
+            background-color: #1976D2;
+            transform: translateY(-1px);
+        }
+
+        .btn-refresh:active:not(:disabled) {
+            transform: translateY(0);
+        }
+
+        .btn-refresh:disabled {
+            background-color: #9E9E9E;
+            cursor: not-allowed;
+        }
+
+    .spinner {
+        display: inline-block;
+        animation: spin 1s linear infinite;
+    }
+
+    @@keyframes spin {
+        from { transform: rotate(0deg); }
+        to { transform: rotate(360deg); }
+    }
+
+    .refresh-message {
+        margin-top: 0.5rem;
+        padding: 0.5rem 1rem;
+        background-color: #E8F5E9;
+        color: #2E7D32;
+        border-radius: 4px;
+        font-size: 0.9em;
     }
 
     .syncing-calendars {
@@ -153,10 +228,13 @@
     [Inject] private FamilyWall.Infrastructure.Data.AppDbContext DbContext { get; set; } = default!;
     [Inject] private FamilyWall.Integrations.Graph.IGraphClient GraphClient { get; set; } = default!;
     [Inject] private Microsoft.Extensions.Options.IOptions<FamilyWall.Core.Settings.AppSettings> Options { get; set; } = default!;
+    [Inject] private FamilyWall.Services.CalendarSyncService? CalendarSyncService { get; set; }
 
     private List<FamilyWall.Core.Models.CalendarEvent> events = new();
     private bool isAuthenticated = false;
     private List<string> activeCalendarNames = new();
+    private bool isRefreshing = false;
+    private string refreshMessage = "";
 
     protected override async Task OnInitializedAsync()
     {
@@ -201,5 +279,48 @@
             .Where(e => e.StartUtc >= today && e.StartUtc <= endDate)
             .OrderBy(e => e.StartUtc)
             .ToListAsync();
+    }
+
+    private async Task RefreshCalendar()
+    {
+        if (CalendarSyncService == null || isRefreshing) return;
+
+        try
+        {
+            isRefreshing = true;
+            refreshMessage = "";
+            StateHasChanged();
+
+            // Trigger immediate sync
+            await CalendarSyncService.TriggerSyncAsync();
+
+            // Wait a moment for database to update
+            await Task.Delay(500);
+
+            // Reload events from database
+            await LoadEventsAsync();
+
+            refreshMessage = "✓ Calendar refreshed successfully!";
+
+            // Clear message after 3 seconds
+            _ = Task.Run(async () =>
+            {
+                await Task.Delay(3000);
+                await InvokeAsync(() =>
+                {
+                    refreshMessage = "";
+                    StateHasChanged();
+                });
+            });
+        }
+        catch (Exception ex)
+        {
+            refreshMessage = $"✗ Error refreshing calendar: {ex.Message}";
+        }
+        finally
+        {
+            isRefreshing = false;
+            StateHasChanged();
+        }
     }
 }
