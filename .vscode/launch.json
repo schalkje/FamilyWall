@@ -1,0 +1,15 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Debug MAUI (Windows)",
+      "type": "coreclr",
+      "request": "launch",
+      "preLaunchTask": "build-maui",
+      "program": "${workspaceFolder}/src/FamilyWall.App/bin/Debug/net9.0-windows10.0.19041.0/win10-arm64/FamilyWall.App.exe",
+      "cwd": "${workspaceFolder}/src/FamilyWall.App",
+      "console": "internalConsole",
+      "justMyCode": true
+    }
+  ]
+}

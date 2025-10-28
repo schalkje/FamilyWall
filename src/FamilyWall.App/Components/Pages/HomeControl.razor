@@ -1,0 +1,249 @@
+@page "/home-control"
+
+<h3>Home Control</h3>
+
+<div class="home-control-page">
+    <div class="status-banner @(isConnected ? "connected" : "disconnected")">
+        <span class="status-icon">@(isConnected ? "●" : "○")</span>
+        @(isConnected ? "Connected to Home Assistant" : "Not Connected")
+    </div>
+
+    @if (!isConnected)
+    {
+        <div class="connect-section">
+            <h2>Connect to Home Assistant</h2>
+            <p>Configure Home Assistant connection in Settings to enable home controls.</p>
+            <div class="config-hint">
+                <p><strong>Required settings:</strong></p>
+                <ul>
+                    <li>Home Assistant Base URL</li>
+                    <li>Long-Lived Access Token</li>
+                    <li>Enable Home Assistant integration</li>
+                </ul>
+            </div>
+        </div>
+    }
+    else
+    {
+        <div class="controls-section">
+            <h2>Quick Actions</h2>
+            <div class="control-grid">
+                <div class="control-card">
+                    <div class="control-icon">💡</div>
+                    <h3>Living Room</h3>
+                    <div class="control-buttons">
+                        <button class="btn-control">On</button>
+                        <button class="btn-control">Off</button>
+                    </div>
+                </div>
+
+                <div class="control-card">
+                    <div class="control-icon">🌡️</div>
+                    <h3>Temperature</h3>
+                    <div class="control-value">22°C</div>
+                    <div class="control-buttons">
+                        <button class="btn-control">-</button>
+                        <button class="btn-control">+</button>
+                    </div>
+                </div>
+
+                <div class="control-card">
+                    <div class="control-icon">🎭</div>
+                    <h3>Scenes</h3>
+                    <div class="control-buttons">
+                        <button class="btn-control">Movie</button>
+                        <button class="btn-control">Relax</button>
+                    </div>
+                </div>
+
+                <div class="control-card">
+                    <div class="control-icon">🎵</div>
+                    <h3>Music</h3>
+                    <div class="control-buttons">
+                        <button class="btn-control">▶️</button>
+                        <button class="btn-control">⏸️</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="devices-section">
+            <h2>All Devices</h2>
+            <p class="placeholder-text">Device list and detailed controls will appear here.</p>
+            <p class="placeholder-text"><em>Integration with Home Assistant WebSocket API coming in future milestone.</em></p>
+        </div>
+    }
+</div>
+
+<style>
+    .home-control-page {
+        padding: 2rem;
+        max-width: 1200px;
+        margin: 0 auto;
+    }
+
+    .status-banner {
+        padding: 1rem 1.5rem;
+        border-radius: 8px;
+        margin-bottom: 2rem;
+        font-weight: 600;
+        font-size: 1.1em;
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+    }
+
+    .status-banner.connected {
+        background-color: #d4edda;
+        color: #155724;
+        border: 2px solid #c3e6cb;
+    }
+
+    .status-banner.disconnected {
+        background-color: #f8d7da;
+        color: #721c24;
+        border: 2px solid #f5c6cb;
+    }
+
+    .status-icon {
+        font-size: 1.5em;
+        line-height: 1;
+    }
+
+    .connect-section {
+        background: white;
+        border-radius: 8px;
+        padding: 2rem;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        text-align: center;
+    }
+
+    .config-hint {
+        margin-top: 1.5rem;
+        text-align: left;
+        max-width: 500px;
+        margin-left: auto;
+        margin-right: auto;
+        padding: 1.5rem;
+        background: #f8f9fa;
+        border-radius: 8px;
+    }
+
+    .config-hint ul {
+        margin: 0.5rem 0;
+        padding-left: 1.5rem;
+    }
+
+    .controls-section {
+        margin-bottom: 2rem;
+    }
+
+    .control-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+        gap: 1.5rem;
+        margin-top: 1rem;
+    }
+
+    .control-card {
+        background: white;
+        border-radius: 12px;
+        padding: 1.5rem;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        text-align: center;
+        transition: transform 0.2s, box-shadow 0.2s;
+    }
+
+    .control-card:hover {
+        transform: translateY(-4px);
+        box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    }
+
+    .control-icon {
+        font-size: 3em;
+        margin-bottom: 0.5rem;
+    }
+
+    .control-card h3 {
+        margin: 0.5rem 0;
+        font-size: 1.2em;
+        color: #333;
+    }
+
+    .control-value {
+        font-size: 2em;
+        font-weight: 600;
+        color: #512BD4;
+        margin: 1rem 0;
+    }
+
+    .control-buttons {
+        display: flex;
+        gap: 0.5rem;
+        justify-content: center;
+        flex-wrap: wrap;
+        margin-top: 1rem;
+    }
+
+    .btn-control {
+        padding: 0.75rem 1.25rem;
+        border: 2px solid #512BD4;
+        background: white;
+        color: #512BD4;
+        border-radius: 8px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.2s;
+        min-width: 60px;
+    }
+
+    .btn-control:hover {
+        background: #512BD4;
+        color: white;
+        transform: scale(1.05);
+    }
+
+    .btn-control:active {
+        transform: scale(0.95);
+    }
+
+    .devices-section {
+        background: white;
+        border-radius: 8px;
+        padding: 2rem;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+
+    .devices-section h2 {
+        margin-top: 0;
+        border-bottom: 2px solid #512BD4;
+        padding-bottom: 0.5rem;
+    }
+
+    .placeholder-text {
+        color: #666;
+        font-size: 1em;
+        margin: 1rem 0;
+    }
+
+    .placeholder-text em {
+        color: #999;
+        font-size: 0.9em;
+    }
+</style>
+
+@code {
+    private bool isConnected = false;
+
+    [Inject] private Microsoft.Extensions.Options.IOptions<FamilyWall.Core.Settings.AppSettings>? Options { get; set; }
+
+    protected override void OnInitialized()
+    {
+        // Check if Home Assistant is configured
+        if (Options?.Value?.HomeAssistant != null)
+        {
+            isConnected = Options.Value.HomeAssistant.Enabled &&
+                         !string.IsNullOrEmpty(Options.Value.HomeAssistant.BaseUrl);
+        }
+    }
+}

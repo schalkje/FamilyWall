@@ -1,0 +1,529 @@
+@page "/photos"
+@implements IDisposable
+
+<PageTitle>Photos</PageTitle>
+
+<div class="photos-page">
+    <h1>Photo Slideshow</h1>
+
+    @if (!string.IsNullOrEmpty(diagnosticLog))
+    {
+        <div class="diagnostic-log">
+            <h3>Diagnostic Log</h3>
+            <pre>@diagnosticLog</pre>
+        </div>
+    }
+
+    @if (indexingStatus?.IsScanning == true)
+    {
+        <div class="indexing-progress">
+            <div class="progress-header">
+                <h2>Scanning Photos...</h2>
+                <span class="progress-percent">@indexingStatus.PercentComplete%</span>
+            </div>
+            <div class="progress-bar-container">
+                <div class="progress-bar" style="width: @(indexingStatus.PercentComplete)%"></div>
+            </div>
+            <div class="progress-stats">
+                <span>@indexingStatus.ProcessedFiles / @indexingStatus.TotalFiles files</span>
+                <span>•</span>
+                <span class="indexed">@indexingStatus.IndexedPhotos new</span>
+                <span>•</span>
+                <span class="skipped">@indexingStatus.SkippedPhotos skipped</span>
+                @if (indexingStatus.Errors > 0)
+                {
+                    <span>•</span>
+                    <span class="errors">@indexingStatus.Errors errors</span>
+                }
+            </div>
+        </div>
+    }
+
+    <div class="slideshow-container">
+        @if (currentPhoto != null)
+        {
+            <div class="photo-display">
+                <img src="@GetPhotoUrl()" alt="Photo" class="photo-image" />
+                <div class="photo-info">
+                    <p class="photo-path">@Path.GetFileName(currentPhoto.Path)</p>
+                    <p class="metadata">
+                        @if (currentPhoto.TakenUtc.HasValue)
+                        {
+                            <span>Taken: @currentPhoto.TakenUtc.Value.ToLocalTime().ToString("MMMM dd, yyyy h:mm tt")</span>
+                        }
+                        @if (currentPhoto.Width.HasValue && currentPhoto.Height.HasValue)
+                        {
+                            <span class="dimensions">@currentPhoto.Width × @currentPhoto.Height</span>
+                        }
+                        @if (currentPhoto.Favorite)
+                        {
+                            <span class="favorite">⭐ Favorite</span>
+                        }
+                    </p>
+                    <p class="stats">
+                        <span>Shown @currentPhoto.ShownCount times</span>
+                        @if (currentPhoto.LastShownUtc.HasValue)
+                        {
+                            <span> • Last: @currentPhoto.LastShownUtc.Value.ToLocalTime().ToString("g")</span>
+                        }
+                    </p>
+                </div>
+            </div>
+        }
+        else if (indexingStatus?.IsScanning == true)
+        {
+            <div class="empty-state">
+                <p>Waiting for first photo to be indexed...</p>
+                <p class="hint">Found @indexingStatus.TotalFiles image files</p>
+                <p class="hint">Source: @photoSourcePath</p>
+            </div>
+        }
+        else
+        {
+            <div class="empty-state">
+                @if (indexingStatus != null && indexingStatus.Errors > 0)
+                {
+                    <p class="error">❌ Error during photo scanning</p>
+                    <p class="hint">Check the application logs for details</p>
+                }
+                else if (indexingStatus != null && indexingStatus.CompletedAt.HasValue)
+                {
+                    <p>✅ Scanning completed - No new photos found</p>
+                    <p class="hint">Indexed: @indexingStatus.IndexedPhotos | Skipped: @indexingStatus.SkippedPhotos</p>
+                }
+                else
+                {
+                    <p>⏳ Waiting for photo indexing to start...</p>
+                }
+                <p class="hint">Configured path: @photoSourcePath</p>
+                <p class="hint">Debug: IsScanning=@indexingStatus?.IsScanning, HasPhotos=@indexingStatus?.HasPhotos, TotalFiles=@indexingStatus?.TotalFiles</p>
+            </div>
+        }
+    </div>
+
+    <div class="controls">
+        <button class="btn btn-primary" @onclick="NextPhoto">Next Photo</button>
+        <button class="btn btn-secondary" @onclick="ToggleFavorite" disabled="@(currentPhoto == null)">
+            @(currentPhoto?.Favorite == true ? "Unfavorite" : "Favorite")
+        </button>
+        <button class="btn btn-info" @onclick="AutoAdvance">
+            @(isAutoAdvancing ? "Stop Auto" : "Start Auto")
+        </button>
+        <button class="btn btn-warning" @onclick="ManualScan">🔄 Manual Scan</button>
+    </div>
+</div>
+
+<style>
+    .photos-page {
+        padding: 1rem;
+        max-width: 100%;
+        margin: 0 auto;
+        height: calc(100vh - 60px);
+        display: flex;
+        flex-direction: column;
+    }
+
+    h1 {
+        margin: 0 0 1rem 0;
+        font-size: 1.5rem;
+    }
+
+    .diagnostic-log {
+        background: #1a1a1a;
+        border: 2px solid #ffc107;
+        border-radius: 8px;
+        padding: 1rem;
+        margin-bottom: 1rem;
+        max-height: 300px;
+        overflow-y: auto;
+    }
+
+        .diagnostic-log h3 {
+            margin: 0 0 0.5rem 0;
+            color: #ffc107;
+            font-size: 1rem;
+        }
+
+        .diagnostic-log pre {
+            margin: 0;
+            font-family: 'Consolas', 'Courier New', monospace;
+            font-size: 0.85rem;
+            color: #0f0;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+
+    .indexing-progress {
+        background: #1a1a1a;
+        border-radius: 8px;
+        padding: 1rem;
+        margin-bottom: 1rem;
+        border: 1px solid #333;
+    }
+
+    .progress-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 0.75rem;
+    }
+
+        .progress-header h2 {
+            margin: 0;
+            font-size: 1.1rem;
+            color: #4CAF50;
+        }
+
+    .progress-percent {
+        font-size: 1.2rem;
+        font-weight: bold;
+        color: #4CAF50;
+    }
+
+    .progress-bar-container {
+        width: 100%;
+        height: 24px;
+        background: #333;
+        border-radius: 12px;
+        overflow: hidden;
+        margin-bottom: 0.5rem;
+    }
+
+    .progress-bar {
+        height: 100%;
+        background: linear-gradient(90deg, #4CAF50, #8BC34A);
+        transition: width 0.3s ease;
+        border-radius: 12px;
+    }
+
+    .progress-stats {
+        display: flex;
+        gap: 0.5rem;
+        font-size: 0.9rem;
+        color: #aaa;
+        justify-content: center;
+    }
+
+        .progress-stats .indexed {
+            color: #4CAF50;
+            font-weight: bold;
+        }
+
+        .progress-stats .skipped {
+            color: #FFC107;
+        }
+
+        .progress-stats .errors {
+            color: #f44336;
+            font-weight: bold;
+        }
+
+    .slideshow-container {
+        flex: 1;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: #000;
+        border-radius: 8px;
+        margin: 0 0 1rem 0;
+        padding: 1rem;
+        overflow: hidden;
+    }
+
+    .photo-display {
+        width: 100%;
+        height: 100%;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+    }
+
+    .photo-image {
+        max-width: 100%;
+        max-height: calc(100% - 100px);
+        object-fit: contain;
+        border-radius: 4px;
+    }
+
+    .photo-info {
+        margin-top: 1rem;
+        color: #fff;
+        text-align: center;
+    }
+
+    .photo-path {
+        font-size: 0.9em;
+        color: #ccc;
+        margin: 0.5rem 0;
+    }
+
+    .metadata {
+        margin: 0.5rem 0;
+        color: #ddd;
+        font-size: 0.95em;
+    }
+
+        .metadata span {
+            margin: 0 0.5rem;
+        }
+
+    .dimensions {
+        color: #aaa;
+        font-size: 0.9em;
+    }
+
+    .favorite {
+        font-size: 1.1em;
+    }
+
+    .stats {
+        margin-top: 0.5rem;
+        font-size: 0.85em;
+        color: #999;
+    }
+
+    .empty-state {
+        text-align: center;
+        color: #ccc;
+    }
+
+        .empty-state .error {
+            color: #f44336;
+            font-weight: bold;
+            font-size: 1.1rem;
+        }
+
+    .controls {
+        display: flex;
+        gap: 1rem;
+        justify-content: center;
+        padding: 0.5rem 0;
+    }
+
+    .hint {
+        font-size: 0.9em;
+        color: #666;
+        margin-top: 0.5rem;
+    }
+
+    .btn {
+        padding: 0.75rem 1.5rem;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+        font-size: 1rem;
+        transition: background-color 0.2s;
+    }
+
+    .btn-primary {
+        background-color: #007bff;
+        color: white;
+    }
+
+        .btn-primary:hover {
+            background-color: #0056b3;
+        }
+
+    .btn-secondary {
+        background-color: #6c757d;
+        color: white;
+    }
+
+        .btn-secondary:hover {
+            background-color: #545b62;
+        }
+
+        .btn-secondary:disabled {
+            background-color: #aaa;
+            cursor: not-allowed;
+        }
+
+    .btn-info {
+        background-color: #17a2b8;
+        color: white;
+    }
+
+        .btn-info:hover {
+            background-color: #138496;
+        }
+
+    .btn-warning {
+        background-color: #ffc107;
+        color: #000;
+    }
+
+        .btn-warning:hover {
+            background-color: #e0a800;
+        }
+</style>
+
+@code {
+    private FamilyWall.Core.Models.Media? currentPhoto;
+    private FamilyWall.Core.Abstractions.IndexingStatus? indexingStatus;
+    private string photoSourcePath = "Not configured";
+    private bool isAutoAdvancing = false;
+    private System.Threading.Timer? autoAdvanceTimer;
+    private System.Threading.Timer? photoCheckTimer;
+    private string diagnosticLog = "";
+    private string currentPhotoDataUrl = "";
+
+    [Inject] private FamilyWall.Core.Abstractions.IPhotoIndex? PhotoIndex { get; set; }
+    [Inject] private Microsoft.Extensions.Options.IOptions<FamilyWall.Core.Settings.AppSettings>? Settings { get; set; }
+    [Inject] private FamilyWall.Core.Abstractions.IIndexingStatusService? IndexingStatusService { get; set; }
+    [Inject] private FamilyWall.Core.Abstractions.IPhotoScanService? PhotoScanService { get; set; }
+    [Inject] private FamilyWall.App.Services.PhotoUrlService? PhotoUrlService { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (Settings?.Value?.Photos?.Sources?.Any() == true)
+        {
+            var source = Settings.Value.Photos.Sources.First();
+            photoSourcePath = source.Path ?? "Not set";
+        }
+
+        // Subscribe to indexing status updates
+        if (IndexingStatusService != null)
+        {
+            IndexingStatusService.StatusChanged += OnIndexingStatusChanged;
+            indexingStatus = IndexingStatusService.Status;
+        }
+
+        // Try to load first photo
+        await LoadNextPhoto();
+
+        // Start timer to check for new photos while scanning
+        photoCheckTimer = new System.Threading.Timer(async _ =>
+        {
+            if (currentPhoto == null && indexingStatus?.HasPhotos == true)
+            {
+                await InvokeAsync(async () =>
+                {
+                    await LoadNextPhoto();
+                });
+            }
+        }, null, TimeSpan.FromSeconds(2), TimeSpan.FromSeconds(2));
+    }
+
+    private void OnIndexingStatusChanged(object? sender, FamilyWall.Core.Abstractions.IndexingStatus status)
+    {
+        InvokeAsync(() =>
+        {
+            indexingStatus = status;
+            StateHasChanged();
+        });
+    }
+
+    private void Log(string message)
+    {
+        diagnosticLog += $"{DateTime.Now:HH:mm:ss} - {message}\n";
+        StateHasChanged();
+    }
+
+    private async Task ManualScan()
+    {
+        diagnosticLog = ""; // Clear previous log
+        Log("=== MANUAL SCAN STARTED ===");
+
+        if (PhotoScanService == null)
+        {
+            Log("❌ ERROR: PhotoScanService is null!");
+            return;
+        }
+
+        try
+        {
+            Log("✓ PhotoScanService found");
+            Log("Starting scan...");
+
+            await PhotoScanService.ScanAllSourcesAsync();
+
+            Log("✓ Scan completed successfully!");
+            Log("Check the progress bar above for results");
+        }
+        catch (Exception ex)
+        {
+            Log($"❌ EXCEPTION: {ex.Message}");
+            Log($"Stack trace: {ex.StackTrace}");
+        }
+
+        Log("=== MANUAL SCAN COMPLETED ===");
+    }
+
+    private async Task LoadNextPhoto()
+    {
+        if (PhotoIndex != null)
+        {
+            currentPhoto = await PhotoIndex.GetNextPhotoAsync();
+            if (currentPhoto != null)
+            {
+                await PhotoIndex.RecordShownAsync(currentPhoto.Id);
+                
+                // Load the photo as data URL
+                if (PhotoUrlService != null)
+                {
+                    currentPhotoDataUrl = await PhotoUrlService.GetPhotoDataUrlAsync(currentPhoto.Path);
+                }
+            }
+            else
+            {
+                currentPhotoDataUrl = "";
+            }
+            StateHasChanged();
+        }
+    }
+
+    private async Task NextPhoto()
+    {
+        await LoadNextPhoto();
+    }
+
+    private async Task ToggleFavorite()
+    {
+        if (currentPhoto != null && PhotoIndex != null)
+        {
+            await PhotoIndex.ToggleFavoriteAsync(currentPhoto.Id);
+            currentPhoto.Favorite = !currentPhoto.Favorite;
+            StateHasChanged();
+        }
+    }
+
+    private void AutoAdvance()
+    {
+        isAutoAdvancing = !isAutoAdvancing;
+
+        if (isAutoAdvancing)
+        {
+            var intervalMs = Settings?.Value?.Photos?.SlideshowIntervalSeconds ?? 5;
+            autoAdvanceTimer = new System.Threading.Timer(async _ =>
+            {
+                await InvokeAsync(async () =>
+                {
+                    await LoadNextPhoto();
+                });
+            }, null, TimeSpan.FromSeconds(intervalMs), TimeSpan.FromSeconds(intervalMs));
+        }
+        else
+        {
+            autoAdvanceTimer?.Dispose();
+            autoAdvanceTimer = null;
+        }
+    }
+
+    private string GetPhotoUrl()
+    {
+        // Return the pre-loaded data URL
+        return currentPhotoDataUrl;
+    }
+
+    public void Dispose()
+    {
+        autoAdvanceTimer?.Dispose();
+        photoCheckTimer?.Dispose();
+
+        if (IndexingStatusService != null)
+        {
+            IndexingStatusService.StatusChanged -= OnIndexingStatusChanged;
+        }
+    }
+}

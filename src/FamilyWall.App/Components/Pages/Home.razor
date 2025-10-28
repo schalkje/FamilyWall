@@ -1,0 +1,840 @@
+@page "/"
+@implements IDisposable
+@layout FullScreenLayout
+@using Microsoft.EntityFrameworkCore
+
+<PageTitle>FamilyWall</PageTitle>
+
+<div class="passive-mode @(currentState.ToString().ToLower())">
+    @if (currentState == FamilyWall.Core.Models.ScreenState.Off)
+    {
+        <!-- Screen off - completely black -->
+        <div class="screen-off"></div>
+    }
+    else if (currentState == FamilyWall.Core.Models.ScreenState.NightLive)
+    {
+        <!-- Night Mode with camera preview -->
+        <div class="night-live-mode">
+            <div class="live-indicator">
+                <span class="live-dot"></span> LIVE
+            </div>
+            <div class="camera-preview">
+                <div class="camera-placeholder">
+                    <span class="camera-icon">📷</span>
+                    <p>Camera feed placeholder</p>
+                </div>
+            </div>
+        </div>
+    }
+    else
+    {
+        <!-- Passive Mode: Full-screen photo with overlays -->
+        @if (currentPhoto != null)
+        {
+            <div class="photo-background" @onclick="TogglePhotoViewMode">
+                <img src="@GetPhotoUrl()" alt="Photo of the day" class="fullscreen-photo" />
+            </div>
+
+            <!-- Top-left overlay: Month name only -->
+            <div class="top-left-overlay @(isPhotoViewMode ? "float-up" : "")">
+                <div class="month-name">@GetMonthName(currentTime)</div>
+            </div>
+
+            <!-- Bottom overlay with 7-column calendar view -->
+            <div class="bottom-overlay @(isPhotoViewMode ? "float-down" : "")">
+                @foreach (var day in weekDays)
+                {
+                    <div class="calendar-column @(day.IsToday ? "today" : "")">
+                        @* Birthday area - absolutely positioned above header *@
+                        <div class="birthday-area">
+                            @if (day.Birthdays.Any())
+                            {
+                                @foreach (var birthday in day.Birthdays)
+                                {
+                                    <div class="birthday-item clickable" @onclick="() => NavigateToCalendar()">
+                                        <span class="birthday-icon">🎂</span>
+                                        <span class="birthday-name">@birthday.Title</span>
+                                    </div>
+                                }
+                            }
+                        </div>
+
+                        @* Column content - header and events *@
+                        <div class="column-content">
+                            <div class="day-header">
+                                @GetDayName(day.Date) @day.Date.Day
+                                @if (day.IsToday && !string.IsNullOrEmpty(weather))
+                                {
+                                    <span class="weather-inline">@weather</span>
+                                }
+                            </div>
+
+                            @* Regular events *@
+                            <div class="events-area">
+                                @if (day.Events.Any())
+                                {
+                                    var eventsToShow = day.Events.Take(3);
+                                    @foreach (var evt in eventsToShow)
+                                    {
+                                        <div class="event-item clickable" @onclick="() => NavigateToCalendar()">
+                                            <span class="event-time">@evt.Time</span>
+                                            <span class="event-title">@evt.Title</span>
+                                        </div>
+                                    }
+
+                                    @* More events indicator *@
+                                    @if (day.Events.Count > 3)
+                                    {
+                                        <div class="more-events">+ @(day.Events.Count - 3) more</div>
+                                    }
+                                }
+                            </div>
+                        </div>
+                    </div>
+                }
+            </div>
+
+            <!-- Photo date badge (top-right corner) -->
+            @if (currentPhoto.TakenUtc.HasValue)
+            {
+                <div class="photo-date-badge">
+                    @currentPhoto.TakenUtc.Value.ToLocalTime().ToString("MMMM dd, yyyy")
+                </div>
+            }
+        }
+        else
+        {
+            <!-- No photo available -->
+            <div class="no-photo-state">
+                <div class="no-photo-content">
+                    <span class="icon">🖼️</span>
+                    @if (indexingStatus?.IsScanning == true)
+                    {
+                        <h2>Scanning photos...</h2>
+                        <p>@indexingStatus.ProcessedFiles of @indexingStatus.TotalFiles files</p>
+                        <div class="scan-progress">
+                            <div class="scan-bar" style="width: @(indexingStatus.PercentComplete)%"></div>
+                        </div>
+                    }
+                    else
+                    {
+                        <h2>No photos yet</h2>
+                        <p>Add photos to your configured source to begin</p>
+                    }
+                </div>
+
+                <!-- Still show month name overlay -->
+                <div class="top-left-overlay">
+                    <div class="month-name">@GetMonthName(currentTime)</div>
+                </div>
+            </div>
+        }
+    }
+</div>
+
+<style>
+    .passive-mode {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100vw;
+        height: 100vh;
+        overflow: hidden;
+        background: #000;
+    }
+
+    .screen-off {
+        width: 100%;
+        height: 100%;
+        background: #000;
+    }
+
+    .night-live-mode {
+        width: 100%;
+        height: 100%;
+        position: relative;
+        background: #000;
+    }
+
+    .live-indicator {
+        position: absolute;
+        top: 2rem;
+        right: 2rem;
+        background: rgba(220, 38, 38, 0.95);
+        color: white;
+        padding: 0.75rem 1.5rem;
+        border-radius: 8px;
+        font-weight: 700;
+        font-size: 1.5em;
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        z-index: 100;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+    }
+
+    .live-dot {
+        width: 16px;
+        height: 16px;
+        background: white;
+        border-radius: 50%;
+        animation: pulse 1.5s ease-in-out infinite;
+    }
+
+    @@keyframes pulse {
+        0%, 100% {
+            opacity: 1;
+        }
+
+        50% {
+            opacity: 0.3;
+        }
+    }
+
+    .camera-preview {
+        width: 100%;
+        height: 100%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    .camera-placeholder {
+        text-align: center;
+        color: #666;
+    }
+
+    .camera-icon {
+        font-size: 8em;
+        display: block;
+        margin-bottom: 1rem;
+        opacity: 0.3;
+    }
+
+    .camera-placeholder p {
+        font-size: 1.5em;
+        opacity: 0.5;
+    }
+
+    .photo-background {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        z-index: 1;
+        cursor: pointer;
+    }
+
+    .fullscreen-photo {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        animation: fadeIn 1s ease-in-out;
+    }
+
+    @@keyframes fadeIn {
+        from {
+            opacity: 0;
+        }
+
+        to {
+            opacity: 1;
+        }
+    }
+
+    /* Top-left overlay: Month name only */
+    .top-left-overlay {
+        position: absolute;
+        top: 2rem;
+        left: 3rem;
+        z-index: 10;
+        color: white;
+        text-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
+        transition: transform 0.8s ease-in-out, opacity 0.8s ease-in-out;
+    }
+
+        .top-left-overlay.float-up {
+            transform: translateY(-150%);
+            opacity: 0;
+        }
+
+    .month-name {
+        font-size: 4rem;
+        font-weight: 700;
+        line-height: 1;
+        letter-spacing: 0.5px;
+    }
+
+    /* Weather inline in today's column header */
+    .weather-inline {
+        font-size: 1.2rem;
+        opacity: 0.85;
+        margin-left: 0.5rem;
+    }
+
+    /* Bottom overlay: 7-column calendar */
+    .bottom-overlay {
+        position: absolute;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        background: linear-gradient(to top, rgba(0,0,0,0.85), rgba(0,0,0,0.6) 70%, transparent);
+        padding: 2rem 3rem;
+        z-index: 10;
+        display: flex;
+        gap: 1.5rem;
+        color: white;
+        transition: transform 0.8s ease-in-out, opacity 0.8s ease-in-out;
+    }
+
+        .bottom-overlay.float-down {
+            transform: translateY(100%);
+            opacity: 0;
+        }
+
+    .calendar-column {
+        display: flex;
+        flex-direction: column;
+        flex: 1;
+        min-width: 0;
+        position: relative;
+        padding-top: 3rem; /* Space for birthdays above */
+    }
+
+        .calendar-column.today {
+            flex-grow: 2;
+        }
+
+    /* Birthday area - absolutely positioned above header */
+    .birthday-area {
+        position: absolute;
+        top: 0;
+        left: 0.25rem;
+        right: 0;
+        display: flex;
+        flex-direction: column;
+        gap: 0.25rem;
+        align-items: left;
+    }
+
+    .birthday-item {
+        display: flex;
+        gap: 0.5rem;
+        align-items: center;
+        padding: 0.25rem 0.5rem;
+        cursor: pointer;
+        border-radius: 6px;
+        transition: background-color 0.2s ease;
+    }
+
+        .birthday-item:hover {
+            background-color: rgba(255, 255, 255, 0.1);
+        }
+
+    .birthday-icon {
+        font-size: 1.2em;
+        filter: drop-shadow(0 0 4px rgba(248, 180, 0, 0.9));
+    }
+
+    .birthday-name {
+        color: #F8B400;
+        font-weight: 600;
+        font-size: 1rem;
+        text-shadow: 0 0 8px rgba(248, 180, 0, 0.6),
+                     0 0 12px rgba(248, 180, 0, 0.4),
+                     0 2px 4px rgba(0, 0, 0, 0.5);
+    }
+
+    /* Column content - aligned across all columns */
+    .column-content {
+        display: flex;
+        flex-direction: column;
+        gap: 0.375rem;
+    }
+
+    .day-header {
+        font-size: 1.3rem;
+        font-weight: 600;
+        opacity: 0.95;
+        margin-bottom: 0.5rem;
+        white-space: nowrap;
+    }
+
+    .events-area {
+        display: flex;
+        flex-direction: column;
+        gap: 0.375rem;
+    }
+
+    .event-item {
+        display: flex;
+        gap: 0.5rem;
+        padding: 0.5rem;
+        font-size: 1rem;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+        align-items: center;
+    }
+
+        .event-item:last-child {
+            border-bottom: none;
+        }
+
+        .event-item.clickable {
+            cursor: pointer;
+            border-radius: 8px;
+            transition: background-color 0.2s ease;
+        }
+
+            .event-item.clickable:hover {
+                background-color: rgba(255, 255, 255, 0.1);
+            }
+
+    .event-time {
+        font-weight: 600;
+        opacity: 0.9;
+        white-space: nowrap;
+    }
+
+    .calendar-column.today .event-time {
+        min-width: 80px;
+    }
+
+    .event-title {
+        flex: 1;
+        opacity: 0.95;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .more-events {
+        font-size: 1rem;
+        opacity: 0.7;
+        font-style: italic;
+        padding: 0.25rem 0.5rem;
+    }
+
+    /* Photo date badge - moved to top-right */
+    .photo-date-badge {
+        position: absolute;
+        top: 2rem;
+        right: 3rem;
+        background: rgba(0, 0, 0, 0.5);
+        color: rgba(255, 255, 255, 0.7);
+        padding: 0.5rem 1rem;
+        border-radius: 4px;
+        font-size: 0.9rem;
+        z-index: 5;
+        backdrop-filter: blur(4px);
+    }
+
+    .no-photo-state {
+        width: 100%;
+        height: 100%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+    }
+
+    .no-photo-content {
+        text-align: center;
+        color: white;
+        padding: 3rem;
+    }
+
+        .no-photo-content .icon {
+            font-size: 8em;
+            display: block;
+            margin-bottom: 1.5rem;
+            opacity: 0.3;
+        }
+
+        .no-photo-content h2 {
+            font-size: 2.5rem;
+            font-weight: 300;
+            margin-bottom: 1rem;
+            opacity: 0.9;
+        }
+
+        .no-photo-content p {
+            font-size: 1.3rem;
+            opacity: 0.6;
+        }
+
+    .scan-progress {
+        width: 300px;
+        height: 4px;
+        background: rgba(255, 255, 255, 0.2);
+        border-radius: 2px;
+        margin: 1.5rem auto 0;
+        overflow: hidden;
+    }
+
+    .scan-bar {
+        height: 100%;
+        background: linear-gradient(90deg, #4CAF50, #8BC34A);
+        transition: width 0.3s ease;
+    }
+</style>
+
+@code {
+    private FamilyWall.Core.Models.Media? currentPhoto;
+    private FamilyWall.Core.Abstractions.IndexingStatus? indexingStatus;
+    private FamilyWall.Core.Models.ScreenState currentState;
+    private DateTime currentTime = DateTime.Now;
+    private string currentPhotoDataUrl = "";
+    private string weather = "☀ 14°C";
+    private List<DayColumn> weekDays = new();
+    private string currentLanguage = "nl"; // Default to Dutch
+    private bool isPhotoViewMode = false;
+    private System.Threading.Timer? autoAdvanceTimer;
+    private System.Threading.Timer? clockTimer;
+    private System.Threading.Timer? photoCheckTimer;
+    private System.Threading.Timer? photoViewModeTimer;
+    private System.Threading.Timer? calendarRefreshTimer;
+
+    [Inject] private FamilyWall.Core.Abstractions.IPhotoIndex? PhotoIndex { get; set; }
+    [Inject] private FamilyWall.Core.Abstractions.IScreenStateService? ScreenStateService { get; set; }
+    [Inject] private FamilyWall.Core.Abstractions.IIndexingStatusService? IndexingStatusService { get; set; }
+    [Inject] private FamilyWall.App.Services.PhotoUrlService? PhotoUrlService { get; set; }
+    [Inject] private Microsoft.Extensions.Options.IOptions<FamilyWall.Core.Settings.AppSettings>? Settings { get; set; }
+    [Inject] private Microsoft.AspNetCore.Components.NavigationManager? NavigationManager { get; set; }
+    [Inject] private FamilyWall.Infrastructure.Data.AppDbContext? DbContext { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Get current screen state
+        if (ScreenStateService != null)
+        {
+            currentState = ScreenStateService.CurrentState;
+            ScreenStateService.StateChanged += OnStateChanged;
+        }
+
+        // Subscribe to indexing status
+        if (IndexingStatusService != null)
+        {
+            IndexingStatusService.StatusChanged += OnIndexingStatusChanged;
+            indexingStatus = IndexingStatusService.Status;
+        }
+
+        // Load first photo
+        await LoadNextPhoto();
+
+        // Start auto-advance timer (only in Interactive/Ambient modes)
+        if (currentState == FamilyWall.Core.Models.ScreenState.Interactive ||
+            currentState == FamilyWall.Core.Models.ScreenState.Ambient)
+        {
+            StartAutoAdvance();
+        }
+
+        // Start clock update timer
+        clockTimer = new System.Threading.Timer(_ =>
+        {
+            currentTime = DateTime.Now;
+            InvokeAsync(StateHasChanged);
+        }, null, TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(1));
+
+        // Check for new photos during scanning
+        photoCheckTimer = new System.Threading.Timer(async _ =>
+        {
+            if (currentPhoto == null && indexingStatus?.HasPhotos == true)
+            {
+                await InvokeAsync(async () =>
+                {
+                    await LoadNextPhoto();
+                });
+            }
+        }, null, TimeSpan.FromSeconds(2), TimeSpan.FromSeconds(2));
+
+        // Load real calendar events for 7 days
+        await LoadWeekEventsAsync();
+
+        // Refresh calendar events every 5 minutes
+        calendarRefreshTimer = new System.Threading.Timer(async _ =>
+        {
+            await InvokeAsync(async () =>
+            {
+                await LoadWeekEventsAsync();
+                StateHasChanged();
+            });
+        }, null, TimeSpan.FromMinutes(5), TimeSpan.FromMinutes(5));
+    }
+
+    private void OnStateChanged(object? sender, FamilyWall.Core.Abstractions.ScreenStateChangedEventArgs e)
+    {
+        currentState = e.NewState;
+
+        // Start/stop auto-advance based on state
+        if (currentState == FamilyWall.Core.Models.ScreenState.Interactive ||
+            currentState == FamilyWall.Core.Models.ScreenState.Ambient)
+        {
+            StartAutoAdvance();
+        }
+        else
+        {
+            StopAutoAdvance();
+        }
+
+        InvokeAsync(StateHasChanged);
+    }
+
+    private void OnIndexingStatusChanged(object? sender, FamilyWall.Core.Abstractions.IndexingStatus status)
+    {
+        InvokeAsync(() =>
+        {
+            indexingStatus = status;
+            StateHasChanged();
+        });
+    }
+
+    private async Task LoadNextPhoto()
+    {
+        if (PhotoIndex != null)
+        {
+            currentPhoto = await PhotoIndex.GetNextPhotoAsync();
+            if (currentPhoto != null)
+            {
+                await PhotoIndex.RecordShownAsync(currentPhoto.Id);
+
+                // Load photo as data URL
+                if (PhotoUrlService != null)
+                {
+                    currentPhotoDataUrl = await PhotoUrlService.GetPhotoDataUrlAsync(currentPhoto.Path);
+                }
+            }
+            else
+            {
+                currentPhotoDataUrl = "";
+            }
+            StateHasChanged();
+        }
+    }
+
+    private void StartAutoAdvance()
+    {
+        if (autoAdvanceTimer != null) return;
+
+        var intervalSeconds = Settings?.Value?.Photos?.SlideshowIntervalSeconds ?? 5;
+        autoAdvanceTimer = new System.Threading.Timer(async _ =>
+        {
+            await InvokeAsync(async () =>
+            {
+                await LoadNextPhoto();
+            });
+        }, null, TimeSpan.FromSeconds(intervalSeconds), TimeSpan.FromSeconds(intervalSeconds));
+    }
+
+    private void StopAutoAdvance()
+    {
+        autoAdvanceTimer?.Dispose();
+        autoAdvanceTimer = null;
+    }
+
+    private async Task LoadWeekEventsAsync()
+    {
+        weekDays = new List<DayColumn>();
+        var today = DateTime.Today;
+        var endDate = today.AddDays(7);
+
+        // Load calendar events from database
+        List<FamilyWall.Core.Models.CalendarEvent> calendarEvents = new();
+        if (DbContext != null)
+        {
+            calendarEvents = await DbContext.CalendarEvents
+                .Where(e => e.StartUtc >= today && e.StartUtc < endDate)
+                .OrderBy(e => e.StartUtc)
+                .ToListAsync();
+        }
+
+        // Group events by day
+        for (int i = 0; i < 7; i++)
+        {
+            var date = today.AddDays(i);
+            var dayStart = date.Date;
+            var dayEnd = dayStart.AddDays(1);
+
+            var dayColumn = new DayColumn
+            {
+                Date = date,
+                IsToday = i == 0
+            };
+
+            // Get events for this day
+            var dayEvents = calendarEvents
+                .Where(e => e.StartUtc >= dayStart && e.StartUtc < dayEnd)
+                .ToList();
+
+            foreach (var evt in dayEvents)
+            {
+                // Separate birthdays from regular events
+                if (evt.IsBirthday)
+                {
+                    dayColumn.Birthdays.Add(new CalendarEvent
+                    {
+                        Time = "",
+                        Title = evt.Title
+                    });
+                }
+                else
+                {
+                    dayColumn.Events.Add(new CalendarEvent
+                    {
+                        Time = evt.IsAllDay ? "" : evt.StartUtc.ToLocalTime().ToString("HH:mm"),
+                        Title = evt.Title
+                    });
+                }
+            }
+
+            weekDays.Add(dayColumn);
+        }
+    }
+
+    private string GetDayName(DateTime date)
+    {
+        if (currentLanguage == "nl")
+        {
+            // Dutch day names
+            return date.DayOfWeek switch
+            {
+                DayOfWeek.Monday => "Maandag",
+                DayOfWeek.Tuesday => "Dinsdag",
+                DayOfWeek.Wednesday => "Woensdag",
+                DayOfWeek.Thursday => "Donderdag",
+                DayOfWeek.Friday => "Vrijdag",
+                DayOfWeek.Saturday => "Zaterdag",
+                DayOfWeek.Sunday => "Zondag",
+                _ => ""
+            };
+        }
+        else
+        {
+            // English day names
+            return date.DayOfWeek switch
+            {
+                DayOfWeek.Monday => "Monday",
+                DayOfWeek.Tuesday => "Tuesday",
+                DayOfWeek.Wednesday => "Wednesday",
+                DayOfWeek.Thursday => "Thursday",
+                DayOfWeek.Friday => "Friday",
+                DayOfWeek.Saturday => "Saturday",
+                DayOfWeek.Sunday => "Sunday",
+                _ => ""
+            };
+        }
+    }
+
+    private string GetMonthName(DateTime date)
+    {
+        if (currentLanguage == "nl")
+        {
+            // Dutch month names
+            return date.Month switch
+            {
+                1 => "Januari",
+                2 => "Februari",
+                3 => "Maart",
+                4 => "April",
+                5 => "Mei",
+                6 => "Juni",
+                7 => "Juli",
+                8 => "Augustus",
+                9 => "September",
+                10 => "Oktober",
+                11 => "November",
+                12 => "December",
+                _ => ""
+            };
+        }
+        else
+        {
+            // English month names
+            return date.Month switch
+            {
+                1 => "January",
+                2 => "February",
+                3 => "March",
+                4 => "April",
+                5 => "May",
+                6 => "June",
+                7 => "July",
+                8 => "August",
+                9 => "September",
+                10 => "October",
+                11 => "November",
+                12 => "December",
+                _ => ""
+            };
+        }
+    }
+
+    private string GetPhotoUrl()
+    {
+        return currentPhotoDataUrl;
+    }
+
+    private void NavigateToCalendar()
+    {
+        NavigationManager?.NavigateTo("/calendar");
+    }
+
+    private void TogglePhotoViewMode()
+    {
+        isPhotoViewMode = !isPhotoViewMode;
+
+        // Cancel existing timer if any
+        photoViewModeTimer?.Dispose();
+        photoViewModeTimer = null;
+
+        if (isPhotoViewMode)
+        {
+            // Start 1-minute timeout to return to passive mode
+            photoViewModeTimer = new System.Threading.Timer(_ =>
+            {
+                InvokeAsync(() =>
+                {
+                    isPhotoViewMode = false;
+                    photoViewModeTimer?.Dispose();
+                    photoViewModeTimer = null;
+                    StateHasChanged();
+                });
+            }, null, TimeSpan.FromMinutes(1), Timeout.InfiniteTimeSpan);
+        }
+
+        StateHasChanged();
+    }
+
+    public void Dispose()
+    {
+        autoAdvanceTimer?.Dispose();
+        clockTimer?.Dispose();
+        photoCheckTimer?.Dispose();
+        photoViewModeTimer?.Dispose();
+        calendarRefreshTimer?.Dispose();
+
+        if (ScreenStateService != null)
+        {
+            ScreenStateService.StateChanged -= OnStateChanged;
+        }
+
+        if (IndexingStatusService != null)
+        {
+            IndexingStatusService.StatusChanged -= OnIndexingStatusChanged;
+        }
+    }
+
+    private class DayColumn
+    {
+        public DateTime Date { get; set; }
+        public bool IsToday { get; set; }
+        public List<CalendarEvent> Birthdays { get; set; } = new();
+        public List<CalendarEvent> Events { get; set; } = new();
+    }
+
+    private class CalendarEvent
+    {
+        public string Time { get; set; } = "";
+        public string Title { get; set; } = "";
+    }
+}

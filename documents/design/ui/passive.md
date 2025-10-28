@@ -1,0 +1,255 @@
+# Passive Mode UI Design
+
+The passive mode is the default display state of FamilyWall - a full-screen photo frame with contextual information overlays.
+
+## Overview
+
+Passive mode displays a rotating slideshow of family photos with subtle overlays showing:
+- Current date and time
+- Weather information
+- Upcoming calendar events
+- Photo metadata
+
+## Layout Structure
+
+### Main Display
+- **Full-screen photo background** that covers the entire viewport (100vw x 100vh)
+- Photo displays with `object-fit: cover` to fill the screen proportionally
+- Smooth **fade-in animation** (1 second) when transitioning between photos
+- Photos auto-advance based on configurable interval (default 5 seconds)
+- **Z-index**: 1 (base layer)
+
+### Top Left Overlay
+Month name display in the top-left corner:
+
+**Visual Properties:**
+- **Position**: 2-3rem from top and left edges
+- **Text styling**: White text with subtle shadow/glow
+- **No background gradient** (text only)
+
+- **Month Name**
+  - Font size: 4rem (same size as the old time display)
+  - Font weight: 700 (bold)
+  - Format: Full month name only (no date, no time)
+  - **Language support**: Dutch (default) and English (configurable in settings)
+  - Dutch examples: "Januari", "Februari", "Oktober"
+  - English examples: "January", "February", "October"
+  - Line height: 1
+  - Letter spacing: 0.5px
+
+### Top Right Overlay
+Reserved for future use (weather moved to today's column header).
+
+### Bottom Overlay
+A dark gradient overlay at the bottom containing upcoming events:
+
+**Visual Properties:**
+- **Background**: Linear gradient from `rgba(0,0,0,0.85)` at bottom to `rgba(0,0,0,0.6)` at 70%, then transparent
+- **Layout**: 7 columns using flexbox
+- **Padding**: 2rem vertical, 3rem horizontal
+- **Z-index**: 10 (above photo, below badges)
+
+#### Columns
+Show 7 columns for the week view:
+- **Column 1 (Today)**: Dynamically grows based on content (flex-grow: 2), shows up to 3 events
+- **Columns 2-7**: Next 6 days, equally sized, shows up to 3 events each
+- **Spacing**: 0.375rem gap between elements (half of original spacing)
+
+- **Birthday Events** (special display, positioned ABOVE column headers)
+  - Position: Absolutely positioned above all column headers (ensures headers align)
+  - All column headers remain at the same height regardless of birthdays
+  - Multiple birthdays stack vertically, centered above the column
+  - Layout: Birthday area is 3rem tall, positioned at top: 0 of column
+  - Icon: 🎂 (birthday cake)
+  - No time display
+  - Color: #F8B400 (festive amber/gold)
+  - Font weight: 600
+  - Font size: 1rem
+  - **Glowing/Shaded Effect**:
+    - Icon has golden glow: `text-shadow: 0 0 8px rgba(248, 180, 0, 0.8), 0 0 12px rgba(248, 180, 0, 0.6)`
+    - Icon also has drop-shadow filter for extra glow
+    - Name has matching golden glow with similar shadow values
+  - Gap between stacked birthdays: 0.25rem
+  - Alignment: Center-aligned within the column
+  - Do NOT count toward the "up to 3 events" limit
+
+- **Column Header**: Day name + day number
+  - **Aligned height**: All headers are at the same vertical position across all 7 columns
+  - Column padding-top: 3rem (reserves space for birthday area above)
+  - Format: "Maandag 19" or "Monday 19"
+  - Full day names: "Monday", "Tuesday", etc.
+  - **Language support**: Dutch (default) and English (configurable in settings)
+  - Font size: 1.3rem
+  - Font weight: 600
+  - Opacity: 95%
+  - Margin bottom: 0.5rem
+  - White space: nowrap
+
+  - **Today's column header** includes weather information:
+    - Format: "Maandag 19 ☀ 14°C"
+    - Weather font size: 1.2rem
+    - Weather opacity: 85%
+    - Separator: space between day number and weather icon
+
+- **Regular Event Items**
+  - **All columns (including today)**: Show up to 3 events maximum
+  - Layout: Vertical stack with 0.375rem gap
+  - Font size: 1rem
+  - Padding: 0.5rem
+  - Border bottom: 1px solid `rgba(255, 255, 255, 0.2)` (except last item)
+
+  - **Event Time**
+    - Font weight: 600
+    - Min width: 80px (for today's column)
+    - Can be abbreviated for other columns
+    - Opacity: 90%
+    - White space: nowrap
+
+  - **Event Title**
+    - Flex: 1 (grows to fill space)
+    - Can be abbreviated more for columns 2-7
+    - Opacity: 95%
+    - Overflow: hidden with ellipsis
+    - White space: nowrap
+
+  - **More Events Indicator**
+    - Display when more than 3 events exist for ANY day (including today)
+    - Format: "+ 2 more" (shows count of additional events)
+    - Font size: 1rem
+    - Opacity: 70%
+    - Font style: italic
+    - Padding: 0.25rem 0.5rem
+
+  - **Interactive States**
+    - Cursor: pointer
+    - Hover: `rgba(255, 255, 255, 0.1)` background
+    - Border radius: 8px on hover
+    - Transition: 0.2s ease
+    - Click: Navigates to calendar page
+
+- **No Events State**
+  - Just display the column header (day name + number), nothing below it
+  - Empty columns remain visible in the layout
+
+### Photo Date Badge
+Subtle indicator showing when the photo was taken:
+
+- **Position**: Absolute, top-right corner
+  - Top: 2rem
+  - Right: 3rem
+- **Background**: `rgba(0, 0, 0, 0.5)` with blur effect
+- **Text Color**: `rgba(255, 255, 255, 0.7)`
+- **Padding**: 0.5rem horizontal, 1rem vertical
+- **Border radius**: 4px
+- **Font size**: 0.9rem
+- **Z-index**: 5 (below bottom overlay)
+- **Backdrop filter**: blur(4px)
+- **Format**: "MMMM dd, yyyy" (e.g., "October 19, 2025")
+
+## Special States
+
+### No Photo State
+Displayed when no photos are available in the library:
+
+- **Background**: Dark gradient
+  - From: `#1a1a2e` (dark navy)
+  - To: `#16213e` (darker blue-gray)
+  - Direction: 135deg diagonal
+
+- **Center Content**
+  - Icon: =� emoji at 8em size, 30% opacity
+  - Heading: "No photos yet"
+    - Font size: 2.5rem
+    - Font weight: 300
+    - Opacity: 90%
+  - Subtext: "Add photos to your configured source to begin"
+    - Font size: 1.3rem
+    - Opacity: 60%
+  - All text in white
+
+- **Scanning State** (when indexing is in progress)
+  - Heading changes to: "Scanning photos..."
+  - Shows progress: "X of Y files"
+  - **Progress bar**:
+    - Width: 300px
+    - Height: 4px
+    - Background: `rgba(255, 255, 255, 0.2)`
+    - Fill: Linear gradient `#4CAF50` to `#8BC34A` (green)
+    - Border radius: 2px
+    - Transition: 0.3s ease
+
+- **Bottom overlay** still visible showing date/time (no events section)
+
+### Night Live Mode
+Activated when motion is detected during night mode:
+
+- **Background**: Black (`#000`)
+- **Live Indicator** (top-right corner)
+  - Position: 2rem from top and right
+  - Background: `rgba(220, 38, 38, 0.95)` (red)
+  - Color: white
+  - Padding: 0.75rem horizontal, 1.5rem vertical
+  - Border radius: 8px
+  - Font weight: 700
+  - Font size: 1.5em
+  - Box shadow: `0 4px 12px rgba(0,0,0,0.5)`
+  - Z-index: 100
+
+  - **Live Dot**
+    - Size: 16px circle
+    - Color: white
+    - Pulsing animation (1.5s infinite)
+    - Opacity varies: 100% � 30% � 100%
+
+- **Camera Preview**
+  - Centered on screen
+  - Placeholder shows =� emoji (8em size, 30% opacity)
+  - Text: "Camera feed placeholder" (1.5em, 50% opacity)
+
+### Screen Off State
+- Completely black screen (`#000`)
+- No content displayed
+- Minimal power consumption mode
+
+## Animation & Transitions
+
+### Photo Transitions
+- **fadeIn animation**: 1 second ease-in-out
+  - From: opacity 0
+  - To: opacity 1
+
+### Interactive Elements
+- Event items: 0.2s ease background transition on hover
+- Progress bar: 0.3s ease width transition
+
+### Live Indicator Pulse
+- **Duration**: 1.5s
+- **Timing**: ease-in-out
+- **Iterations**: infinite
+- **Keyframes**:
+  - 0%, 100%: opacity 1
+  - 50%: opacity 0.3
+
+## Timing & Behavior
+
+- **Clock update**: Every 1 second
+- **Photo advance**: Configurable interval (default 5 seconds)
+- **Photo check during scan**: Every 2 seconds (checks if new photos available)
+- **Auto-advance**: Active in Interactive and Ambient states only
+- **Auto-advance**: Paused in Off and NightLive states
+
+## Implementation Reference
+
+- **File**: [src/FamilyWall.App/Components/Pages/Home.razor](../../src/FamilyWall.App/Components/Pages/Home.razor)
+- **CSS**: Lines 108-373
+- **Component Logic**: Lines 375-556
+- **Layout**: Uses FullScreenLayout (no navigation chrome)
+
+## Future Enhancements
+
+- Real weather API integration (currently mock data)
+- Real calendar integration (currently mock events)
+- Actual camera feed in Night Live mode
+- Parallax zoom effects on photos
+- Ambient light detection for automatic brightness adjustment
+- Voice-activated transitions

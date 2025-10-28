@@ -131,8 +131,12 @@ Interactive Modes:
 
 ## 9. Future Enhancements
 
-- Voice commands (e.g., “Show tomorrow’s photos”, “Add appointment for Friday”).
+- Inside the calendar page, I want a full calendar
+  - view current full month, + at least a full week before the current week and at leat a full week after the current week
+- on the home screen, when clicking on [to be determined], I want to see a full week in the past, and 4 weeks in the future on the screen
+- Voice commands (e.g., "Show tomorrow's photos", "Add appointment for Friday").
 - Personalization by detected person (e.g., show their calendar) where privacy-appropriate.
 - Expanded home information (weather, lights, household to-do list).
 - Daily summary email with photo and agenda.
 - Optional AI photo tagging to improve discovery.
+- **Real-time calendar sync via Microsoft Graph webhooks**: Replace polling-based sync (currently 15-minute intervals) with push notifications for instant updates when calendar events are added/modified/deleted on any device. This would provide near-instantaneous sync (within seconds) while reducing API calls and improving battery life on mobile devices. Requires webhook endpoint setup with ngrok/tunnel for local development or public URL for production deployment.

@@ -1,0 +1,961 @@
+@page "/settings"
+@implements IDisposable
+
+<h3>Settings</h3>
+
+<div class="settings-page">
+    <h1>Settings</h1>
+    
+    <div class="settings-section">
+        <h2>Photos</h2>
+        <div class="setting-item">
+            <label>Slideshow Interval (seconds)</label>
+            <p>@settings?.Photos.SlideshowIntervalSeconds</p>
+        </div>
+        <div class="setting-item">
+            <label>Cache Size (MB)</label>
+            <p>@settings?.Photos.CacheSizeMb</p>
+        </div>
+        <div class="setting-item">
+            <label>Configured Sources</label>
+            <ul>
+                @if (settings?.Photos.Sources != null)
+                {
+                    @foreach (var source in settings.Photos.Sources)
+                    {
+                        <li>@source.Type: @source.Path (@(source.Enabled ? "Enabled" : "Disabled"))</li>
+                    }
+                }
+            </ul>
+        </div>
+    </div>
+    
+    <div class="settings-section">
+        <h2>Screen State & Presence</h2>
+        <div class="setting-item">
+            <label>Current State</label>
+            <p class="state-badge state-@currentState.ToString().ToLower()">@currentState</p>
+        </div>
+        <div class="setting-item">
+            <label>In Night Mode Schedule</label>
+            <p>@(isNightModeSchedule ? "Yes" : "No")</p>
+        </div>
+        <div class="setting-item">
+            <label>Last State Change</label>
+            <p>@(lastStateChange?.ToString("HH:mm:ss") ?? "N/A") - @lastStateChangeReason</p>
+        </div>
+        <div class="setting-item">
+            <label>Test State Transitions</label>
+            <div class="button-group">
+                <button class="btn btn-primary" @onclick="() => TransitionTo(FamilyWall.Core.Models.ScreenState.Interactive)">Interactive</button>
+                <button class="btn btn-secondary" @onclick="() => TransitionTo(FamilyWall.Core.Models.ScreenState.Off)">Off</button>
+                <button class="btn btn-warning" @onclick="() => TransitionTo(FamilyWall.Core.Models.ScreenState.NightLive)">Night Live</button>
+                <button class="btn btn-info" @onclick="() => TransitionTo(FamilyWall.Core.Models.ScreenState.Ambient)">Ambient</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="settings-section">
+        <h2>Night Mode</h2>
+        <div class="setting-item">
+            <label>Enabled</label>
+            <p>@settings?.NightMode.Enabled</p>
+        </div>
+        <div class="setting-item">
+            <label>Schedule</label>
+            <p>@settings?.NightMode.StartTime - @settings?.NightMode.EndTime</p>
+        </div>
+        <div class="setting-item">
+            <label>Motion Threshold</label>
+            <p>@settings?.NightMode.MotionThreshold</p>
+        </div>
+        <div class="setting-item">
+            <label>Inactivity Timeout</label>
+            <p>@settings?.NightMode.InactivityTimeoutSeconds seconds</p>
+        </div>
+    </div>
+    
+    <div class="settings-section">
+        <h2>Microsoft Graph Integration</h2>
+        <div class="setting-item">
+            <label>Status</label>
+            <p class="@(isGraphAuthenticated ? "status-connected" : "status-disconnected")">
+                @(isGraphAuthenticated ? "✓ Connected" : "✗ Not Connected")
+            </p>
+        </div>
+        @if (string.IsNullOrEmpty(settings?.Graph.ClientId))
+        {
+            <div class="setting-item">
+                <div class="alert alert-warning">
+                    <strong>Setup Required:</strong> Please configure Microsoft Graph Client ID in appsettings.json
+                    <br/>
+                    <small>Path: App → Graph → ClientId</small>
+                    <br/>
+                    <small>Register an app at: <a href="https://portal.azure.com/#blade/Microsoft_AAD_RegisteredApps/ApplicationsListBlade" target="_blank">Azure Portal</a></small>
+                </div>
+            </div>
+        }
+        else
+        {
+            <div class="setting-item">
+                <label>Client ID</label>
+                <p>@settings?.Graph.ClientId</p>
+            </div>
+            <div class="setting-item">
+                <label>Scopes</label>
+                <p>@string.Join(", ", settings?.Graph.Scopes ?? Array.Empty<string>())</p>
+            </div>
+            @if (!isGraphAuthenticated)
+            {
+                <div class="setting-item">
+                    <button class="btn btn-primary" @onclick="AuthenticateWithGraph" disabled="@isAuthenticating">
+                        @(isAuthenticating ? "Authenticating..." : "Sign in with Microsoft")
+                    </button>
+                </div>
+                @if (!string.IsNullOrEmpty(deviceCodeMessage))
+                {
+                    <div class="alert alert-info">
+                        @if (!string.IsNullOrEmpty(deviceCodeUrl) && !string.IsNullOrEmpty(deviceCode))
+                        {
+                            <div class="device-code-instructions">
+                                <h4>📱 Sign in to Microsoft</h4>
+                                <ol>
+                                    <li>
+                                        <strong>Click this button</strong> to open the sign-in page in your browser:
+                                        <br/>
+                                        <a href="@deviceCodeUrl" target="_blank" class="auth-link" @onclick="OpenAuthUrl">
+                                            🌐 Open Sign-In Page
+                                        </a>
+                                    </li>
+                                    <li>
+                                        <strong>Enter this code</strong> when prompted:
+                                        <br/>
+                                        <div class="code-display">
+                                            <span class="device-code">@deviceCode</span>
+                                            <button class="btn-copy" @onclick="() => CopyToClipboard(deviceCode)">
+                                                📋 Copy Code
+                                            </button>
+                                        </div>
+                                        <small class="hint">✓ Code automatically copied to clipboard</small>
+                                    </li>
+                                    <li>
+                                        <strong>Complete the sign-in</strong> and return to this page
+                                    </li>
+                                </ol>
+                            </div>
+                        }
+                        else
+                        {
+                            <pre>@deviceCodeMessage</pre>
+                        }
+                    </div>
+                }
+            }
+            else
+            {
+                <div class="setting-item">
+                    <label>Active Calendars</label>
+                    @if (settings?.Graph.CalendarIds?.Count > 0)
+                    {
+                        <div class="active-calendars">
+                            @foreach (var calId in settings.Graph.CalendarIds)
+                            {
+                                var calName = availableCalendars.FirstOrDefault(c => c.Id == calId)?.Name ?? calId;
+                                <span class="calendar-badge">@calName</span>
+                            }
+                        </div>
+                        @if (availableCalendars.Count == 0)
+                        {
+                            <p class="hint" style="color: #dc3545;">⚠️ Calendar names unavailable. Click "Discover Calendars" to reload.</p>
+                        }
+                    }
+                    else
+                    {
+                        <p class="hint">Using default calendar</p>
+                    }
+                </div>
+                <div class="setting-item">
+                    <label>Manage Calendars</label>
+                    <div class="button-group">
+                        <button class="btn btn-info" @onclick="DiscoverCalendars" disabled="@isDiscoveringCalendars">
+                            @(isDiscoveringCalendars ? "Loading..." : "Discover Calendars")
+                        </button>
+                        <button class="btn btn-success" @onclick="RefreshCalendar" disabled="@isRefreshingCalendar">
+                            @if (isRefreshingCalendar)
+                            {
+                                <span class="spinner">⟳</span>
+                                <span>Refreshing...</span>
+                            }
+                            else
+                            {
+                                <span>🔄 Refresh Events</span>
+                            }
+                        </button>
+                    </div>
+                    @if (!string.IsNullOrEmpty(refreshCalendarMessage))
+                    {
+                        <p class="refresh-message">@refreshCalendarMessage</p>
+                    }
+                </div>
+                @if (availableCalendars.Count > 0)
+                {
+                    <div class="setting-item">
+                        <label>Available Calendars</label>
+                        <div class="calendar-list">
+                            @foreach (var cal in availableCalendars)
+                            {
+                                <div class="calendar-item">
+                                    <label class="calendar-checkbox">
+                                        <input type="checkbox"
+                                               checked="@IsCalendarSelected(cal.Id)"
+                                               @onchange="@(() => ToggleCalendar(cal.Id))" />
+                                        <span class="calendar-name">
+                                            @cal.Name
+                                            @if (cal.IsDefaultCalendar)
+                                            {
+                                                <span class="badge badge-primary">Default</span>
+                                            }
+                                        </span>
+                                        @if (!string.IsNullOrEmpty(cal.Owner))
+                                        {
+                                            <span class="calendar-owner">@cal.Owner</span>
+                                        }
+                                    </label>
+                                </div>
+                            }
+                        </div>
+                        @if (selectedCalendarIds.Count > 0)
+                        {
+                            <button class="btn btn-success" @onclick="SaveCalendarSelection">
+                                Save Calendar Selection (@selectedCalendarIds.Count selected)
+                            </button>
+                        }
+                        <p class="hint">Leave all unchecked to sync default calendar only</p>
+                    </div>
+                }
+                <div class="setting-item">
+                    <button class="btn btn-secondary" @onclick="SignOutFromGraph">Sign Out</button>
+                </div>
+            }
+        }
+    </div>
+
+    <div class="settings-section">
+        <h2>Privacy</h2>
+        <div class="setting-item">
+            <label>Recording Consent</label>
+            <p>@settings?.Privacy.RecordingConsent</p>
+        </div>
+        <div class="setting-item">
+            <label>Night Mode Recording</label>
+            <p>@settings?.Privacy.NightModeRecordingEnabled (Retention: @settings?.Privacy.RetentionDays days)</p>
+        </div>
+    </div>
+
+    <p class="hint">To modify settings, edit appsettings.user.json in the app data directory.</p>
+</div>
+
+<style>
+    .settings-page {
+        padding: 2rem;
+        max-width: 900px;
+        margin: 0 auto;
+    }
+    
+    .settings-section {
+        background: white;
+        border-radius: 8px;
+        padding: 1.5rem;
+        margin-bottom: 2rem;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    
+    .settings-section h2 {
+        margin-top: 0;
+        border-bottom: 2px solid #512BD4;
+        padding-bottom: 0.5rem;
+    }
+    
+    .setting-item {
+        margin-bottom: 1rem;
+    }
+    
+    .setting-item label {
+        font-weight: 600;
+        display: block;
+        margin-bottom: 0.25rem;
+        color: #333;
+    }
+    
+    .setting-item p {
+        margin: 0;
+        color: #666;
+    }
+    
+    .setting-item ul {
+        margin: 0.5rem 0;
+        padding-left: 1.5rem;
+    }
+    
+    .hint {
+        text-align: center;
+        color: #999;
+        font-size: 0.9em;
+        margin-top: 2rem;
+    }
+
+    .state-badge {
+        display: inline-block;
+        padding: 0.5rem 1rem;
+        border-radius: 4px;
+        font-weight: 600;
+        font-size: 1.1em;
+    }
+
+    .state-interactive {
+        background-color: #28a745;
+        color: white;
+    }
+
+    .state-off {
+        background-color: #6c757d;
+        color: white;
+    }
+
+    .state-nightlive {
+        background-color: #fd7e14;
+        color: white;
+    }
+
+    .state-ambient {
+        background-color: #17a2b8;
+        color: white;
+    }
+
+    .button-group {
+        display: flex;
+        gap: 0.5rem;
+        flex-wrap: wrap;
+    }
+
+    .btn {
+        padding: 0.5rem 1rem;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+        font-weight: 600;
+        transition: all 0.2s;
+    }
+
+    .btn:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+    }
+
+    .btn-primary {
+        background-color: #28a745;
+        color: white;
+    }
+
+    .btn-secondary {
+        background-color: #6c757d;
+        color: white;
+    }
+
+    .btn-warning {
+        background-color: #fd7e14;
+        color: white;
+    }
+
+    .btn-info {
+        background-color: #17a2b8;
+        color: white;
+    }
+
+    .status-connected {
+        color: #28a745;
+        font-weight: 600;
+        font-size: 1.1em;
+    }
+
+    .status-disconnected {
+        color: #dc3545;
+        font-weight: 600;
+        font-size: 1.1em;
+    }
+
+    .alert {
+        padding: 1rem;
+        border-radius: 4px;
+        margin-top: 0.5rem;
+    }
+
+    .alert-warning {
+        background-color: #fff3cd;
+        border: 1px solid #ffc107;
+        color: #856404;
+    }
+
+    .alert-info {
+        background-color: #d1ecf1;
+        border: 1px solid #bee5eb;
+        color: #0c5460;
+    }
+
+    .alert pre {
+        background: white;
+        padding: 0.5rem;
+        border-radius: 4px;
+        overflow-x: auto;
+        white-space: pre-wrap;
+        word-wrap: break-word;
+    }
+
+    .alert a {
+        color: inherit;
+        text-decoration: underline;
+    }
+
+    .calendar-list {
+        margin-top: 1rem;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+        padding: 0.5rem;
+        max-height: 300px;
+        overflow-y: auto;
+    }
+
+    .calendar-item {
+        padding: 0.75rem;
+        border-bottom: 1px solid #eee;
+    }
+
+    .calendar-item:last-child {
+        border-bottom: none;
+    }
+
+    .calendar-checkbox {
+        display: flex;
+        align-items: flex-start;
+        gap: 0.75rem;
+        cursor: pointer;
+        width: 100%;
+    }
+
+    .calendar-checkbox input[type="checkbox"] {
+        margin-top: 0.25rem;
+        width: 18px;
+        height: 18px;
+        cursor: pointer;
+    }
+
+    .calendar-name {
+        font-weight: 600;
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        flex: 1;
+    }
+
+    .calendar-owner {
+        display: block;
+        font-size: 0.85em;
+        color: #666;
+        margin-top: 0.25rem;
+    }
+
+    .badge {
+        display: inline-block;
+        padding: 0.25rem 0.5rem;
+        font-size: 0.75em;
+        font-weight: 600;
+        border-radius: 3px;
+    }
+
+    .badge-primary {
+        background-color: #512BD4;
+        color: white;
+    }
+
+    .btn-success {
+        background-color: #28a745;
+        color: white;
+        margin-top: 1rem;
+    }
+
+    .active-calendars {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+        margin-top: 0.5rem;
+    }
+
+    .calendar-badge {
+        display: inline-block;
+        padding: 0.5rem 0.75rem;
+        background-color: #e7f3ff;
+        border: 1px solid #2196F3;
+        color: #0d47a1;
+        border-radius: 4px;
+        font-size: 0.9em;
+        font-weight: 500;
+    }
+
+    .device-code-instructions {
+        text-align: left;
+    }
+
+    .device-code-instructions h4 {
+        margin-top: 0;
+        margin-bottom: 1rem;
+        color: #0c5460;
+    }
+
+    .device-code-instructions ol {
+        padding-left: 1.5rem;
+        line-height: 1.8;
+    }
+
+    .device-code-instructions li {
+        margin-bottom: 1rem;
+    }
+
+    .auth-link {
+        display: inline-block;
+        margin-top: 0.5rem;
+        padding: 0.5rem 1rem;
+        background-color: #007bff;
+        color: white !important;
+        text-decoration: none;
+        border-radius: 4px;
+        font-weight: 600;
+        transition: background-color 0.2s;
+    }
+
+    .auth-link:hover {
+        background-color: #0056b3;
+        text-decoration: none;
+    }
+
+    .code-display {
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+        margin-top: 0.5rem;
+        padding: 1rem;
+        background-color: #f8f9fa;
+        border: 2px dashed #007bff;
+        border-radius: 4px;
+    }
+
+    .device-code {
+        font-family: 'Courier New', monospace;
+        font-size: 1.5em;
+        font-weight: bold;
+        color: #007bff;
+        letter-spacing: 0.2em;
+    }
+
+    .btn-copy {
+        padding: 0.5rem 1rem;
+        background-color: #28a745;
+        color: white;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+        font-weight: 600;
+        transition: all 0.2s;
+    }
+
+    .btn-copy:hover {
+        background-color: #218838;
+        transform: translateY(-2px);
+    }
+
+    .btn-copy:active {
+        transform: translateY(0);
+    }
+
+    .button-group {
+        display: flex;
+        gap: 0.75rem;
+        flex-wrap: wrap;
+    }
+
+    .spinner {
+        display: inline-block;
+        animation: spin 1s linear infinite;
+    }
+
+    @@keyframes spin {
+        from { transform: rotate(0deg); }
+        to { transform: rotate(360deg); }
+    }
+
+    .refresh-message {
+        margin-top: 0.5rem;
+        padding: 0.5rem 1rem;
+        background-color: #E8F5E9;
+        color: #2E7D32;
+        border-radius: 4px;
+        font-size: 0.9em;
+    }
+</style>
+
+@code {
+    private FamilyWall.Core.Settings.AppSettings? settings;
+    private FamilyWall.Core.Models.ScreenState currentState;
+    private bool isNightModeSchedule;
+    private DateTime? lastStateChange;
+    private string? lastStateChangeReason;
+
+    // Graph authentication state
+    private bool isGraphAuthenticated = false;
+    private bool isAuthenticating = false;
+    private string? deviceCodeMessage;
+    private string? deviceCodeUrl;
+    private string? deviceCode;
+
+    // Calendar discovery state
+    private bool isDiscoveringCalendars = false;
+    private List<FamilyWall.Integrations.Graph.GraphCalendar> availableCalendars = new();
+    private HashSet<string> selectedCalendarIds = new();
+
+    // Calendar refresh state
+    private bool isRefreshingCalendar = false;
+    private string refreshCalendarMessage = "";
+
+    [Inject] private Microsoft.Extensions.Options.IOptions<FamilyWall.Core.Settings.AppSettings>? Options { get; set; }
+    [Inject] private FamilyWall.Core.Abstractions.IScreenStateService? ScreenStateService { get; set; }
+    [Inject] private FamilyWall.Integrations.Graph.IGraphClient? GraphClient { get; set; }
+    [Inject] private Microsoft.Extensions.Configuration.IConfiguration? Configuration { get; set; }
+    [Inject] private FamilyWall.Services.CalendarSyncService? CalendarSyncService { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        settings = Options?.Value;
+
+        if (ScreenStateService != null)
+        {
+            currentState = ScreenStateService.CurrentState;
+            isNightModeSchedule = ScreenStateService.IsNightModeSchedule();
+
+            // Subscribe to state changes
+            ScreenStateService.StateChanged += OnStateChanged;
+        }
+
+        // Check Graph authentication status
+        if (GraphClient != null)
+        {
+            isGraphAuthenticated = await GraphClient.IsAuthenticatedAsync();
+
+            // Don't auto-load calendars - user should click "Discover Calendars" button
+            // This prevents unnecessary API calls and allows users to pick different default calendars
+        }
+
+        // Update schedule check periodically
+        var timer = new System.Threading.Timer(_ =>
+        {
+            if (ScreenStateService != null)
+            {
+                isNightModeSchedule = ScreenStateService.IsNightModeSchedule();
+                InvokeAsync(StateHasChanged);
+            }
+        }, null, TimeSpan.FromSeconds(30), TimeSpan.FromSeconds(30));
+    }
+
+    private void OnStateChanged(object? sender, FamilyWall.Core.Abstractions.ScreenStateChangedEventArgs e)
+    {
+        currentState = e.NewState;
+        lastStateChange = e.TransitionedAt.ToLocalTime();
+        lastStateChangeReason = e.Reason;
+        InvokeAsync(StateHasChanged);
+    }
+
+    private async Task TransitionTo(FamilyWall.Core.Models.ScreenState newState)
+    {
+        if (ScreenStateService != null)
+        {
+            await ScreenStateService.TransitionToAsync(newState, "Manual transition from Settings");
+        }
+    }
+
+    private async Task AuthenticateWithGraph()
+    {
+        if (GraphClient == null) return;
+
+        isAuthenticating = true;
+        deviceCodeMessage = null;
+        deviceCodeUrl = null;
+        deviceCode = null;
+        StateHasChanged();
+
+        try
+        {
+            var success = await GraphClient.AuthenticateAsync(async message =>
+            {
+                deviceCodeMessage = message;
+
+                // Parse the device code message to extract URL and code
+                // Expected format: "To sign in, use a web browser to open the page https://microsoft.com/devicelogin and enter the code ABC123 to authenticate."
+                ParseDeviceCodeMessage(message);
+
+                // Copy device code to clipboard automatically
+                if (!string.IsNullOrEmpty(deviceCode))
+                {
+                    await CopyToClipboard(deviceCode);
+                }
+
+                await InvokeAsync(StateHasChanged);
+            });
+
+            if (success)
+            {
+                isGraphAuthenticated = true;
+                deviceCodeMessage = "✓ Authentication successful! Calendar sync will begin shortly.";
+                deviceCodeUrl = null;
+                deviceCode = null;
+            }
+            else
+            {
+                deviceCodeMessage = "✗ Authentication failed. Please try again.";
+            }
+        }
+        catch (Exception ex)
+        {
+            deviceCodeMessage = $"✗ Error: {ex.Message}";
+        }
+        finally
+        {
+            isAuthenticating = false;
+            StateHasChanged();
+        }
+    }
+
+    private void ParseDeviceCodeMessage(string message)
+    {
+        try
+        {
+            // Extract URL (looking for https://... pattern)
+            var urlMatch = System.Text.RegularExpressions.Regex.Match(message, @"https://[^\s]+");
+            if (urlMatch.Success)
+            {
+                deviceCodeUrl = urlMatch.Value;
+            }
+
+            // Extract code (looking for "code" followed by alphanumeric sequence)
+            var codeMatch = System.Text.RegularExpressions.Regex.Match(message, @"code\s+([A-Z0-9]+)", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+            if (codeMatch.Success && codeMatch.Groups.Count > 1)
+            {
+                deviceCode = codeMatch.Groups[1].Value;
+            }
+        }
+        catch
+        {
+            // If parsing fails, just show the original message
+        }
+    }
+
+    private async Task CopyToClipboard(string text)
+    {
+        try
+        {
+            await Microsoft.Maui.ApplicationModel.DataTransfer.Clipboard.SetTextAsync(text);
+        }
+        catch
+        {
+            // Silently fail if clipboard is not available
+        }
+    }
+
+    private async Task OpenAuthUrl()
+    {
+        if (!string.IsNullOrEmpty(deviceCodeUrl))
+        {
+            await OpenUrlInBrowser(deviceCodeUrl);
+        }
+    }
+
+    private async Task OpenUrlInBrowser(string url)
+    {
+        try
+        {
+            await Microsoft.Maui.ApplicationModel.Launcher.OpenAsync(url);
+        }
+        catch
+        {
+            // Silently fail if browser cannot be opened
+        }
+    }
+
+    private async Task SignOutFromGraph()
+    {
+        if (GraphClient == null) return;
+
+        await GraphClient.SignOutAsync();
+        isGraphAuthenticated = false;
+        deviceCodeMessage = null;
+        availableCalendars.Clear();
+        selectedCalendarIds.Clear();
+        StateHasChanged();
+    }
+
+    private async Task DiscoverCalendars()
+    {
+        if (GraphClient == null) return;
+
+        isDiscoveringCalendars = true;
+        deviceCodeMessage = null;
+        StateHasChanged();
+
+        try
+        {
+            System.Diagnostics.Debug.WriteLine("DiscoverCalendars: Starting calendar discovery");
+            availableCalendars = await GraphClient.GetCalendarsAsync();
+            System.Diagnostics.Debug.WriteLine($"DiscoverCalendars: Loaded {availableCalendars.Count} calendars");
+
+            // Load currently configured calendar IDs
+            selectedCalendarIds = new HashSet<string>(settings?.Graph.CalendarIds ?? new List<string>());
+            System.Diagnostics.Debug.WriteLine($"DiscoverCalendars: {selectedCalendarIds.Count} calendars selected");
+
+            if (availableCalendars.Count == 0)
+            {
+                deviceCodeMessage = "⚠️ No calendars found. Please check your Microsoft account.";
+            }
+        }
+        catch (InvalidOperationException ex) when (ex.Message.Contains("Authentication") || ex.Message.Contains("authenticated"))
+        {
+            System.Diagnostics.Debug.WriteLine($"DiscoverCalendars: Auth error - {ex.Message}");
+            deviceCodeMessage = "⚠️ Your session has expired. Please sign in again.";
+            isGraphAuthenticated = false;
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"DiscoverCalendars: Error - {ex.Message}\n{ex.StackTrace}");
+            deviceCodeMessage = $"✗ Error discovering calendars: {ex.Message}";
+        }
+        finally
+        {
+            isDiscoveringCalendars = false;
+            StateHasChanged();
+        }
+    }
+
+    private bool IsCalendarSelected(string calendarId)
+    {
+        return selectedCalendarIds.Contains(calendarId);
+    }
+
+    private void ToggleCalendar(string calendarId)
+    {
+        if (selectedCalendarIds.Contains(calendarId))
+        {
+            selectedCalendarIds.Remove(calendarId);
+        }
+        else
+        {
+            selectedCalendarIds.Add(calendarId);
+        }
+        StateHasChanged();
+    }
+
+    private async Task SaveCalendarSelection()
+    {
+        if (Configuration == null) return;
+
+        try
+        {
+            // Update the in-memory configuration
+            var calendarIdsList = selectedCalendarIds.ToList();
+
+            // Save to appsettings.user.json
+            var userSettingsPath = Path.Combine(FileSystem.AppDataDirectory, "appsettings.user.json");
+
+            var userSettings = new Dictionary<string, object>();
+            if (File.Exists(userSettingsPath))
+            {
+                var existingJson = await File.ReadAllTextAsync(userSettingsPath);
+                userSettings = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, object>>(existingJson)
+                    ?? new Dictionary<string, object>();
+            }
+
+            // Update the Graph.CalendarIds section
+            if (!userSettings.ContainsKey("App"))
+            {
+                userSettings["App"] = new Dictionary<string, object>();
+            }
+
+            var appSection = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, object>>(
+                System.Text.Json.JsonSerializer.Serialize(userSettings["App"])) ?? new Dictionary<string, object>();
+
+            if (!appSection.ContainsKey("Graph"))
+            {
+                appSection["Graph"] = new Dictionary<string, object>();
+            }
+
+            var graphSection = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, object>>(
+                System.Text.Json.JsonSerializer.Serialize(appSection["Graph"])) ?? new Dictionary<string, object>();
+
+            graphSection["CalendarIds"] = calendarIdsList;
+            appSection["Graph"] = graphSection;
+            userSettings["App"] = appSection;
+
+            var jsonOptions = new System.Text.Json.JsonSerializerOptions { WriteIndented = true };
+            var json = System.Text.Json.JsonSerializer.Serialize(userSettings, jsonOptions);
+            await File.WriteAllTextAsync(userSettingsPath, json);
+
+            deviceCodeMessage = $"✓ Calendar selection saved! {selectedCalendarIds.Count} calendar(s) selected. Restart the app for changes to take effect.";
+        }
+        catch (Exception ex)
+        {
+            deviceCodeMessage = $"✗ Error saving calendar selection: {ex.Message}";
+        }
+
+        StateHasChanged();
+    }
+
+    private async Task RefreshCalendar()
+    {
+        if (CalendarSyncService == null || isRefreshingCalendar) return;
+
+        try
+        {
+            isRefreshingCalendar = true;
+            refreshCalendarMessage = "";
+            StateHasChanged();
+
+            // Trigger immediate sync
+            await CalendarSyncService.TriggerSyncAsync();
+
+            refreshCalendarMessage = "✓ Calendar events refreshed successfully! Check the Calendar page to see updates.";
+
+            // Clear message after 5 seconds
+            _ = Task.Run(async () =>
+            {
+                await Task.Delay(5000);
+                await InvokeAsync(() =>
+                {
+                    refreshCalendarMessage = "";
+                    StateHasChanged();
+                });
+            });
+        }
+        catch (Exception ex)
+        {
+            refreshCalendarMessage = $"✗ Error refreshing calendar: {ex.Message}";
+        }
+        finally
+        {
+            isRefreshingCalendar = false;
+            StateHasChanged();
+        }
+    }
+
+    public void Dispose()
+    {
+        if (ScreenStateService != null)
+        {
+            ScreenStateService.StateChanged -= OnStateChanged;
+        }
+    }
+}
