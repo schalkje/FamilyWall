@@ -201,6 +201,83 @@ code .
 2. **Context Isolation:** Claude Code sees only the files in the current worktree
 3. **Git Operations:** Claude Code will operate on the current worktree's branch
 
+### Developing Features with Claude Code
+
+When working on a feature with Claude Code in a worktree:
+
+#### Phase 1: Planning
+```
+YOU: "I need to fetch photos from OneDrive with smart filtering
+(same day over years, recent photos, high ratings).
+Explore the codebase and plan this feature."
+
+CLAUDE:
+- Explores codebase architecture
+- Identifies existing patterns (CalendarSyncService, PhotoScanService)
+- Locates relevant files (GraphClient.cs, Media.cs, etc.)
+- Creates implementation plan
+- Sets up todo list for tracking
+```
+
+#### Phase 2: Implementation
+```
+YOU: "Let's implement this feature step by step"
+
+CLAUDE:
+- Follows the plan from Phase 1
+- Updates todo list as work progresses
+- Implements code following existing patterns
+- Runs builds and fixes errors immediately
+- Explains changes and asks for clarification when needed
+```
+
+#### Phase 3: Testing & Refinement
+```
+YOU: "Run the build and fix any issues"
+
+CLAUDE:
+- Runs: dotnet build
+- Fixes compilation errors
+- Addresses warnings
+- Suggests improvements
+```
+
+#### Phase 4: Committing
+```
+YOU: "Create a commit for this work"
+
+CLAUDE:
+- Reviews git status and diff
+- Checks recent commit messages for style
+- Stages relevant files
+- Creates descriptive commit message
+- Pushes to remote branch
+```
+
+#### Best Practices:
+
+1. **Start each session with context:**
+   - "We're working on feature/onedrive-photos in the feat-onedrive-photos worktree"
+   - Claude will remember this is a separate context from main
+
+2. **Be specific about scope:**
+   - "Implement just the Graph API photo fetching for now"
+   - Helps Claude focus on incremental progress
+
+3. **Regular commits:**
+   - Ask Claude to commit after each logical unit
+   - Makes it easier to review and rollback if needed
+
+4. **Use Claude for exploration:**
+   - "Show me how CalendarSyncService works"
+   - "Find all references to PhotoScanService"
+   - Claude can explore the codebase efficiently
+
+5. **Ask for explanations:**
+   - "Explain this implementation approach"
+   - "Why did you choose this pattern?"
+   - Understanding helps you maintain code later
+
 ### Recommended Workflow
 
 ```bash
@@ -335,7 +412,127 @@ git commit  # Completes the merge
 
 ## Common Workflows
 
-### Starting a New Feature
+### Developing a New Feature (Complete Example)
+
+This example shows the full workflow for developing a new feature using worktrees and Claude Code.
+
+**Scenario:** Create a feature to fetch photos from OneDrive with smart filtering (same day over years, recent photos, high ratings).
+
+#### Step 1: Create Feature Worktree
+
+```bash
+# From main worktree
+cd C:/repo/FamilyWall
+
+# Create new branch and worktree
+git worktree add worktrees/feat-onedrive-photos -b feature/onedrive-photos
+
+# Navigate to new worktree
+cd worktrees/feat-onedrive-photos
+
+# Open in VSCode
+code .
+```
+
+#### Step 2: Work with Claude Code
+
+In the VSCode instance for your worktree:
+
+1. **Plan the feature:** Ask Claude Code to help plan the implementation
+   - "I need to fetch photos from OneDrive with smart filtering. Can you explore the codebase and plan this feature?"
+   - Claude will use existing patterns (CalendarSyncService, PhotoScanService) as reference
+
+2. **Implement incrementally:**
+   - Start with Graph API integration
+   - Then add the sync service
+   - Add filtering logic
+   - Update configuration
+
+3. **Test as you go:**
+   - Run builds: `dotnet build`
+   - Fix any issues immediately
+   - Commit working increments
+
+4. **Let Claude Code help with commits:**
+   - "Create a commit for the OneDrive photo sync implementation"
+   - Claude will stage files and create descriptive commits
+
+#### Step 3: Keep Feature Updated with Main
+
+While working on your feature, main branch may get updates:
+
+```bash
+# In your feature worktree
+cd C:/repo/FamilyWall/worktrees/feat-onedrive-photos
+
+# Fetch latest from remote
+git fetch origin
+
+# Merge main into your feature
+git merge origin/main
+
+# Or rebase for cleaner history
+git rebase origin/main
+
+# Push your feature
+git push -u origin feature/onedrive-photos
+```
+
+#### Step 4: Switch Context Without Losing Work
+
+No need to stash or commit unfinished work:
+
+```bash
+# Switch to main worktree for quick fix
+code C:/repo/FamilyWall
+
+# Switch back to feature work
+code C:/repo/FamilyWall/worktrees/feat-onedrive-photos
+
+# Each VSCode instance maintains its own:
+# - Uncommitted changes
+# - Claude Code context
+# - Build outputs
+# - Terminal state
+```
+
+#### Step 5: Complete and Merge Feature
+
+```bash
+# Create pull request (from feature worktree)
+cd C:/repo/FamilyWall/worktrees/feat-onedrive-photos
+
+# Ensure all changes are committed
+git status
+git push origin feature/onedrive-photos
+
+# Ask Claude Code to create PR
+# "Create a pull request for this feature"
+
+# After PR is approved and merged...
+```
+
+#### Step 6: Clean Up
+
+```bash
+# From main worktree
+cd C:/repo/FamilyWall
+
+# Update main branch
+git checkout main
+git pull origin main
+
+# Remove feature worktree (work is now in main)
+git worktree remove worktrees/feat-onedrive-photos
+
+# Delete local branch
+git branch -d feature/onedrive-photos
+
+# Delete remote branch (if not auto-deleted by PR)
+git push origin --delete feature/onedrive-photos
+```
+
+### Starting a New Feature (Quick Reference)
 
 ```bash
 cd C:/repo/FamilyWall
