@@ -1,0 +1,404 @@
+@using FamilyWall.Core.Models
+
+<div class="week-view">
+    <div class="week-header">
+        <button class="nav-btn" @onclick="PreviousWeek">◀</button>
+        <h2>Week of @WeekStart.ToString("MMM d") - @WeekEnd.ToString("MMM d, yyyy")</h2>
+        <button class="nav-btn" @onclick="NextWeek">▶</button>
+    </div>
+
+    <div class="week-grid-container">
+        <!-- Time column -->
+        <div class="time-column">
+            <div class="time-header">All Day</div>
+            @foreach (var hour in GetHours())
+            {
+                <div class="time-slot">
+                    <span class="time-label">@FormatHour(hour)</span>
+                </div>
+            }
+        </div>
+
+        <!-- Day columns -->
+        <div class="days-container">
+            <!-- Day headers -->
+            <div class="day-headers">
+                @foreach (var day in GetWeekDays())
+                {
+                    var isToday = day.Date == DateTime.Today;
+                    <div class="day-header @(isToday ? "today" : "")">
+                        <div class="day-name">@day.ToString("ddd")</div>
+                        <div class="day-number">@day.Day</div>
+                    </div>
+                }
+            </div>
+
+            <!-- All-day events row -->
+            <div class="all-day-row">
+                @foreach (var day in GetWeekDays())
+                {
+                    var allDayEvents = GetAllDayEventsForDay(day);
+                    <div class="all-day-cell">
+                        @foreach (var evt in allDayEvents)
+                        {
+                            <div class="all-day-event"
+                                 style="background-color: @(evt.Calendar?.Color ?? "#3788D8");"
+                                 title="@evt.Title"
+                                 @onclick="() => OnEventClickedInternal(evt)">
+                                <span class="event-title">@evt.Title</span>
+                            </div>
+                        }
+                    </div>
+                }
+            </div>
+
+            <!-- Hour grid -->
+            <div class="hour-grid">
+                @foreach (var hour in GetHours())
+                {
+                    @foreach (var day in GetWeekDays())
+                    {
+                        var timedEvents = GetTimedEventsForDayAndHour(day, hour);
+                        var isCurrentHour = day.Date == DateTime.Today && hour == DateTime.Now.Hour;
+
+                        <div class="hour-cell @(isCurrentHour ? "current-hour" : "")">
+                            @foreach (var evt in timedEvents)
+                            {
+                                var startTime = evt.StartUtc.ToLocalTime();
+                                var endTime = evt.EndUtc?.ToLocalTime() ?? startTime.AddHours(1);
+                                var durationMinutes = (endTime - startTime).TotalMinutes;
+                                var heightPercent = Math.Min(durationMinutes / 60.0 * 100, 200); // Cap at 2 hours visible
+
+                                <div class="timed-event"
+                                     style="background-color: @(evt.Calendar?.Color ?? "#3788D8"); height: @(heightPercent)%; opacity: 0.9;"
+                                     title="@evt.Title"
+                                     @onclick="() => OnEventClickedInternal(evt)">
+                                    <span class="event-time">@startTime.ToString("h:mm tt")</span>
+                                    <span class="event-title">@evt.Title</span>
+                                    @if (!string.IsNullOrEmpty(evt.Location))
+                                    {
+                                        <span class="event-location">📍 @evt.Location</span>
+                                    }
+                                </div>
+                            }
+                        </div>
+                    }
+                }
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+    .week-view {
+        background: white;
+        border-radius: 8px;
+        padding: 1rem;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        height: 100%;
+        display: flex;
+        flex-direction: column;
+    }
+
+    .week-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 1rem;
+        padding-bottom: 1rem;
+        border-bottom: 1px solid #e0e0e0;
+    }
+
+    .week-header h2 {
+        margin: 0;
+        font-size: 1.25rem;
+    }
+
+    .nav-btn {
+        background: none;
+        border: 1px solid #e0e0e0;
+        padding: 0.5rem 1rem;
+        cursor: pointer;
+        border-radius: 4px;
+        font-size: 1rem;
+        transition: all 0.2s;
+    }
+
+    .nav-btn:hover {
+        background: #f5f5f5;
+        border-color: #2196F3;
+    }
+
+    .week-grid-container {
+        display: flex;
+        flex: 1;
+        overflow-y: auto;
+        overflow-x: hidden;
+    }
+
+    .time-column {
+        width: 80px;
+        flex-shrink: 0;
+        border-right: 1px solid #e0e0e0;
+    }
+
+    .time-header {
+        height: 60px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: 600;
+        font-size: 0.75rem;
+        color: #666;
+        border-bottom: 1px solid #e0e0e0;
+    }
+
+    .time-slot {
+        height: 60px;
+        display: flex;
+        align-items: flex-start;
+        justify-content: center;
+        padding-top: 0.25rem;
+        border-bottom: 1px solid #f0f0f0;
+        position: relative;
+    }
+
+    .time-label {
+        font-size: 0.75rem;
+        color: #666;
+        position: relative;
+        top: -8px;
+    }
+
+    .days-container {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+    }
+
+    .day-headers {
+        display: grid;
+        grid-template-columns: repeat(7, 1fr);
+        border-bottom: 1px solid #e0e0e0;
+    }
+
+    .day-header {
+        text-align: center;
+        padding: 0.5rem;
+        height: 60px;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+    }
+
+    .day-header.today {
+        background: #e3f2fd;
+    }
+
+    .day-header.today .day-number {
+        background: #2196F3;
+        color: white;
+        border-radius: 50%;
+        width: 32px;
+        height: 32px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: 700;
+    }
+
+    .day-name {
+        font-size: 0.75rem;
+        color: #666;
+        margin-bottom: 0.25rem;
+        text-transform: uppercase;
+    }
+
+    .day-number {
+        font-size: 1rem;
+        font-weight: 600;
+    }
+
+    .all-day-row {
+        display: grid;
+        grid-template-columns: repeat(7, 1fr);
+        gap: 2px;
+        background: #f9f9f9;
+        padding: 0.5rem;
+        border-bottom: 2px solid #e0e0e0;
+        min-height: 40px;
+    }
+
+    .all-day-cell {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+    }
+
+    .all-day-event {
+        padding: 0.25rem 0.5rem;
+        border-radius: 3px;
+        font-size: 0.75rem;
+        color: white;
+        cursor: pointer;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    .all-day-event:hover {
+        opacity: 0.8;
+    }
+
+    .hour-grid {
+        display: grid;
+        grid-template-columns: repeat(7, 1fr);
+        flex: 1;
+    }
+
+    .hour-cell {
+        height: 60px;
+        border-right: 1px solid #f0f0f0;
+        border-bottom: 1px solid #f0f0f0;
+        position: relative;
+        background: white;
+    }
+
+    .hour-cell.current-hour {
+        background: #fffde7;
+    }
+
+    .timed-event {
+        position: absolute;
+        left: 2px;
+        right: 2px;
+        top: 0;
+        border-radius: 4px;
+        padding: 0.25rem 0.5rem;
+        color: white;
+        font-size: 0.75rem;
+        cursor: pointer;
+        overflow: hidden;
+        display: flex;
+        flex-direction: column;
+        z-index: 1;
+    }
+
+    .timed-event:hover {
+        z-index: 2;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+    }
+
+    .event-time {
+        font-weight: 600;
+        font-size: 0.7rem;
+    }
+
+    .event-title {
+        font-weight: 500;
+        margin-top: 2px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    .event-location {
+        font-size: 0.65rem;
+        opacity: 0.9;
+        margin-top: 2px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+</style>
+
+@code {
+    [Parameter]
+    public List<CalendarEvent> Events { get; set; } = new();
+
+    [Parameter]
+    public EventCallback<CalendarEvent> OnEventClicked { get; set; }
+
+    [Parameter]
+    public EventCallback<DateTime> OnDateSelected { get; set; }
+
+    [Parameter]
+    public EventCallback OnWeekChanged { get; set; }
+
+    private DateTime CurrentWeek { get; set; } = DateTime.Today;
+
+    private DateTime WeekStart
+    {
+        get
+        {
+            var diff = (int)CurrentWeek.DayOfWeek;
+            return CurrentWeek.AddDays(-diff).Date;
+        }
+    }
+
+    private DateTime WeekEnd => WeekStart.AddDays(6);
+
+    private List<int> GetHours()
+    {
+        // 7 AM to 11 PM (17 hours)
+        return Enumerable.Range(7, 17).ToList();
+    }
+
+    private string FormatHour(int hour)
+    {
+        if (hour == 0) return "12 AM";
+        if (hour < 12) return $"{hour} AM";
+        if (hour == 12) return "12 PM";
+        return $"{hour - 12} PM";
+    }
+
+    private List<DateTime> GetWeekDays()
+    {
+        var days = new List<DateTime>();
+        for (int i = 0; i < 7; i++)
+        {
+            days.Add(WeekStart.AddDays(i));
+        }
+        return days;
+    }
+
+    private List<CalendarEvent> GetAllDayEventsForDay(DateTime day)
+    {
+        return Events
+            .Where(e => e.StartUtc.ToLocalTime().Date == day.Date && e.IsAllDay)
+            .OrderBy(e => e.Title)
+            .ToList();
+    }
+
+    private List<CalendarEvent> GetTimedEventsForDayAndHour(DateTime day, int hour)
+    {
+        return Events
+            .Where(e =>
+            {
+                var eventStart = e.StartUtc.ToLocalTime();
+                return eventStart.Date == day.Date
+                    && !e.IsAllDay
+                    && eventStart.Hour == hour;
+            })
+            .OrderBy(e => e.StartUtc)
+            .ToList();
+    }
+
+    private async Task PreviousWeek()
+    {
+        CurrentWeek = CurrentWeek.AddDays(-7);
+        await OnWeekChanged.InvokeAsync();
+    }
+
+    private async Task NextWeek()
+    {
+        CurrentWeek = CurrentWeek.AddDays(7);
+        await OnWeekChanged.InvokeAsync();
+    }
+
+    private async Task OnEventClickedInternal(CalendarEvent evt)
+    {
+        await OnEventClicked.InvokeAsync(evt);
+    }
+}

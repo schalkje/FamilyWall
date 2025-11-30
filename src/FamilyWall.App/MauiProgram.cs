@@ -123,11 +123,14 @@ public static class MauiProgram
 
 		var app = builder.Build();
 
-		// Ensure database is created
+		// Ensure database schema is up to date (will recreate if schema changed)
 		using (var scope = app.Services.CreateScope())
 		{
 			var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-			dbContext.Database.EnsureCreated();
+			var loggerFactory = scope.ServiceProvider.GetRequiredService<ILoggerFactory>();
+			var logger = loggerFactory.CreateLogger("DbMigration");
+
+			DbMigrationHelper.EnsureSchemaUpdatedAsync(dbContext, logger).Wait();
 		}
 
 		// Start hosted services manually (MAUI doesn't auto-start them like ASP.NET Core)

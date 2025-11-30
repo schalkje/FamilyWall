@@ -1,0 +1,404 @@
+@using FamilyWall.Core.Models
+
+<div class="agenda-view">
+    <div class="agenda-header">
+        <h2>Upcoming Events</h2>
+        <div class="date-range">
+            @StartDate.ToString("MMM d") - @EndDate.ToString("MMM d, yyyy")
+        </div>
+    </div>
+
+    <div class="agenda-content">
+        @if (!groupedEvents.Any())
+        {
+            <div class="no-events">
+                <div class="no-events-icon">📅</div>
+                <div class="no-events-text">No upcoming events</div>
+                <div class="no-events-subtext">Your schedule is clear for the next @DaysToShow days</div>
+            </div>
+        }
+        else
+        {
+            @foreach (var group in groupedEvents)
+            {
+                <div class="day-group">
+                    <div class="day-header">
+                        <div class="day-date">
+                            @if (group.Key.Date == DateTime.Today)
+                            {
+                                <span class="today-badge">Today</span>
+                                <span class="separator">-</span>
+                            }
+                            else if (group.Key.Date == DateTime.Today.AddDays(1))
+                            {
+                                <span class="tomorrow-badge">Tomorrow</span>
+                                <span class="separator">-</span>
+                            }
+                            <span class="date-text">@group.Key.ToString("dddd, MMMM d, yyyy")</span>
+                        </div>
+                        <div class="event-count">@group.Count() @(group.Count() == 1 ? "event" : "events")</div>
+                    </div>
+
+                    <div class="day-events">
+                        @foreach (var evt in group.OrderBy(e => e.IsAllDay ? 0 : 1).ThenBy(e => e.StartUtc))
+                        {
+                            <div class="agenda-event" @onclick="() => OnEventClickedInternal(evt)">
+                                <div class="event-time-bar" style="background-color: @(evt.Calendar?.Color ?? "#3788D8")"></div>
+                                <div class="event-content">
+                                    <div class="event-header-row">
+                                        <div class="event-time">
+                                            @if (evt.IsAllDay)
+                                            {
+                                                <span class="all-day-badge">All Day</span>
+                                            }
+                                            else
+                                            {
+                                                <span>@evt.StartUtc.ToLocalTime().ToString("h:mm tt")</span>
+                                                @if (evt.EndUtc.HasValue)
+                                                {
+                                                    <span> - @evt.EndUtc.Value.ToLocalTime().ToString("h:mm tt")</span>
+                                                }
+                                            }
+                                        </div>
+                                        <div class="event-calendar-badge" style="color: @(evt.Calendar?.Color ?? "#3788D8")">
+                                            <span class="dot" style="background-color: @(evt.Calendar?.Color ?? "#3788D8")"></span>
+                                            @(evt.Calendar?.Name ?? "Unknown")
+                                        </div>
+                                    </div>
+
+                                    <div class="event-title">
+                                        @evt.Title
+                                        @if (evt.IsBirthday)
+                                        {
+                                            <span class="birthday-icon">🎂</span>
+                                        }
+                                        @if (evt.IsRecurring)
+                                        {
+                                            <span class="recurring-icon" title="Recurring event">🔄</span>
+                                        }
+                                    </div>
+
+                                    @if (!string.IsNullOrEmpty(evt.Location))
+                                    {
+                                        <div class="event-location">
+                                            📍 @evt.Location
+                                        </div>
+                                    }
+
+                                    @if (!string.IsNullOrEmpty(evt.OnlineMeetingUrl))
+                                    {
+                                        <div class="event-meeting">
+                                            🔗 <a href="@evt.OnlineMeetingUrl" target="_blank" @onclick:stopPropagation="true">Join Online Meeting</a>
+                                        </div>
+                                    }
+
+                                    @if (!string.IsNullOrEmpty(evt.Description) && evt.Description.Length > 0)
+                                    {
+                                        <div class="event-description">
+                                            @(evt.Description.Length > 100 ? evt.Description.Substring(0, 100) + "..." : evt.Description)
+                                        </div>
+                                    }
+
+                                    @if (evt.Attendees != null && evt.Attendees.Any())
+                                    {
+                                        <div class="event-attendees">
+                                            👥 @evt.Attendees.Count @(evt.Attendees.Count == 1 ? "attendee" : "attendees")
+                                        </div>
+                                    }
+                                </div>
+                            </div>
+                        }
+                    </div>
+                </div>
+            }
+
+            @if (hasMoreEvents)
+            {
+                <div class="load-more">
+                    <button class="btn-load-more" @onclick="LoadMoreEvents">
+                        Load More Events
+                    </button>
+                </div>
+            }
+        }
+    </div>
+</div>
+
+<style>
+    .agenda-view {
+        background: white;
+        border-radius: 8px;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        height: 100%;
+        display: flex;
+        flex-direction: column;
+    }
+
+    .agenda-header {
+        padding: 1.5rem 2rem;
+        border-bottom: 1px solid #e0e0e0;
+    }
+
+    .agenda-header h2 {
+        margin: 0 0 0.5rem 0;
+        font-size: 1.5rem;
+    }
+
+    .date-range {
+        color: #666;
+        font-size: 0.9rem;
+    }
+
+    .agenda-content {
+        flex: 1;
+        overflow-y: auto;
+        padding: 1rem 0;
+    }
+
+    .no-events {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        padding: 4rem 2rem;
+        text-align: center;
+    }
+
+    .no-events-icon {
+        font-size: 4rem;
+        margin-bottom: 1rem;
+        opacity: 0.3;
+    }
+
+    .no-events-text {
+        font-size: 1.25rem;
+        font-weight: 600;
+        color: #333;
+        margin-bottom: 0.5rem;
+    }
+
+    .no-events-subtext {
+        color: #666;
+        font-size: 0.9rem;
+    }
+
+    .day-group {
+        margin-bottom: 1.5rem;
+    }
+
+    .day-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 0.75rem 2rem;
+        background: #f9f9f9;
+        border-top: 1px solid #e0e0e0;
+        border-bottom: 1px solid #e0e0e0;
+        position: sticky;
+        top: 0;
+        z-index: 10;
+    }
+
+    .day-date {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        font-weight: 600;
+        font-size: 1rem;
+    }
+
+    .today-badge, .tomorrow-badge {
+        background: #2196F3;
+        color: white;
+        padding: 0.25rem 0.75rem;
+        border-radius: 12px;
+        font-size: 0.8rem;
+        font-weight: 600;
+    }
+
+    .tomorrow-badge {
+        background: #4CAF50;
+    }
+
+    .separator {
+        color: #999;
+    }
+
+    .date-text {
+        color: #333;
+    }
+
+    .event-count {
+        color: #666;
+        font-size: 0.85rem;
+    }
+
+    .day-events {
+        padding: 0 2rem;
+    }
+
+    .agenda-event {
+        display: flex;
+        padding: 1rem 0;
+        border-bottom: 1px solid #f0f0f0;
+        cursor: pointer;
+        transition: background 0.2s;
+    }
+
+    .agenda-event:hover {
+        background: #f9f9f9;
+    }
+
+    .event-time-bar {
+        width: 4px;
+        border-radius: 2px;
+        margin-right: 1rem;
+        flex-shrink: 0;
+    }
+
+    .event-content {
+        flex: 1;
+        min-width: 0;
+    }
+
+    .event-header-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 0.5rem;
+    }
+
+    .event-time {
+        font-size: 0.9rem;
+        color: #666;
+        font-weight: 500;
+    }
+
+    .all-day-badge {
+        background: #e3f2fd;
+        color: #1976D2;
+        padding: 0.2rem 0.5rem;
+        border-radius: 4px;
+        font-size: 0.75rem;
+        font-weight: 600;
+    }
+
+    .event-calendar-badge {
+        display: flex;
+        align-items: center;
+        gap: 0.25rem;
+        font-size: 0.8rem;
+        font-weight: 500;
+    }
+
+    .event-calendar-badge .dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+    }
+
+    .event-title {
+        font-size: 1.1rem;
+        font-weight: 600;
+        color: #333;
+        margin-bottom: 0.5rem;
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+    }
+
+    .birthday-icon, .recurring-icon {
+        font-size: 1rem;
+    }
+
+    .event-location, .event-meeting, .event-description, .event-attendees {
+        font-size: 0.85rem;
+        color: #666;
+        margin-top: 0.5rem;
+        line-height: 1.4;
+    }
+
+    .event-meeting a {
+        color: #2196F3;
+        text-decoration: none;
+    }
+
+    .event-meeting a:hover {
+        text-decoration: underline;
+    }
+
+    .event-description {
+        font-style: italic;
+    }
+
+    .load-more {
+        padding: 1.5rem 2rem;
+        text-align: center;
+    }
+
+    .btn-load-more {
+        padding: 0.75rem 2rem;
+        background: white;
+        border: 1px solid #2196F3;
+        color: #2196F3;
+        border-radius: 6px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.2s;
+    }
+
+    .btn-load-more:hover {
+        background: #2196F3;
+        color: white;
+    }
+</style>
+
+@code {
+    [Parameter]
+    public List<CalendarEvent> Events { get; set; } = new();
+
+    [Parameter]
+    public EventCallback<CalendarEvent> OnEventClicked { get; set; }
+
+    [Parameter]
+    public int DaysToShow { get; set; } = 30;
+
+    private DateTime StartDate => DateTime.Today;
+    private DateTime EndDate => DateTime.Today.AddDays(DaysToShow);
+    private bool hasMoreEvents = false;
+
+    private List<IGrouping<DateTime, CalendarEvent>> groupedEvents = new();
+
+    protected override void OnParametersSet()
+    {
+        UpdateGroupedEvents();
+    }
+
+    private void UpdateGroupedEvents()
+    {
+        var filteredEvents = Events
+            .Where(e => e.StartUtc.ToLocalTime().Date >= StartDate && e.StartUtc.ToLocalTime().Date <= EndDate)
+            .OrderBy(e => e.StartUtc)
+            .ToList();
+
+        groupedEvents = filteredEvents
+            .GroupBy(e => e.StartUtc.ToLocalTime().Date)
+            .OrderBy(g => g.Key)
+            .ToList();
+
+        // Check if there are more events beyond the current range
+        hasMoreEvents = Events.Any(e => e.StartUtc.ToLocalTime().Date > EndDate);
+    }
+
+    private void LoadMoreEvents()
+    {
+        DaysToShow += 30;
+        UpdateGroupedEvents();
+        StateHasChanged();
+    }
+
+    private async Task OnEventClickedInternal(CalendarEvent evt)
+    {
+        await OnEventClicked.InvokeAsync(evt);
+    }
+}

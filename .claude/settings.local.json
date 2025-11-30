@@ -16,7 +16,12 @@
       "Bash(git worktree:*)",
       "Bash(dir \"C:\\repo\\FamilyWall\\src\" /b)",
       "Bash(dotnet build:*)",
-      "Bash(dotnet ef migrations add:*)"
+      "Bash(dotnet ef migrations add:*)",
+      "Bash(Select-String -Pattern \"error|warning|succeeded|failed\")",
+      "Bash(Select-Object -First 20)",
+      "Bash(dotnet new:*)",
+      "Bash(dotnet add:*)",
+      "Bash(dotnet test:*)"
     ],
     "deny": [],
     "ask": []

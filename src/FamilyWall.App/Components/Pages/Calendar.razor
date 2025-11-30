@@ -1,138 +1,187 @@
 @page "/calendar"
 @using Microsoft.EntityFrameworkCore
+@using FamilyWall.Core.Models
+@using FamilyWall.Services
+@using FamilyWall.App.ViewModels
+@inject ICalendarService CalendarService
+@inject ICalendarEventService EventService
+@inject CalendarSyncService SyncService
 
-<h3>Calendar</h3>
-
-<div class="calendar-page">
+<div class="calendar-container">
     <div class="calendar-header">
-        <div class="header-top">
-            <h1>Upcoming Events</h1>
-            @if (isAuthenticated)
-            {
+        <div class="header-content">
+            <h1>📅 Calendar</h1>
+            <div class="header-actions">
+                <!-- View Switcher -->
+                <div class="view-switcher">
+                    <button class="view-btn @(currentView == CalendarViewModel.ViewMode.Month ? "active" : "")"
+                            @onclick="() => SwitchView(CalendarViewModel.ViewMode.Month)">
+                        Month
+                    </button>
+                    <button class="view-btn @(currentView == CalendarViewModel.ViewMode.Week ? "active" : "")"
+                            @onclick="() => SwitchView(CalendarViewModel.ViewMode.Week)">
+                        Week
+                    </button>
+                    <button class="view-btn @(currentView == CalendarViewModel.ViewMode.Agenda ? "active" : "")"
+                            @onclick="() => SwitchView(CalendarViewModel.ViewMode.Agenda)">
+                        Agenda
+                    </button>
+                </div>
+
+                <button class="btn-today" @onclick="GoToToday">Today</button>
+                <button class="btn-settings" @onclick="OpenSettings">⚙️ Settings</button>
                 <button class="btn-refresh" @onclick="RefreshCalendar" disabled="@isRefreshing">
                     @if (isRefreshing)
                     {
                         <span class="spinner">⟳</span>
-                        <span>Refreshing...</span>
+                        <span>Syncing...</span>
                     }
                     else
                     {
-                        <span>🔄 Refresh Now</span>
+                        <span>🔄 Sync</span>
                     }
                 </button>
-            }
+            </div>
         </div>
-        @if (activeCalendarNames.Count > 0)
+
+        @if (calendars.Any())
         {
-            <div class="syncing-calendars">
-                <span class="label">Syncing:</span>
-                @foreach (var calName in activeCalendarNames)
+            <div class="calendar-badges">
+                @foreach (var calendar in calendars.Where(c => c.IsEnabled))
                 {
-                    <span class="calendar-badge">@calName</span>
+                    <span class="calendar-badge" style="border-left-color: @calendar.Color">
+                        <span class="dot" style="background-color: @calendar.Color"></span>
+                        @calendar.Name (@calendar.Events.Count)
+                    </span>
                 }
             </div>
         }
-        else if (isAuthenticated)
-        {
-            <div class="syncing-calendars">
-                <span class="label">Syncing:</span>
-                <span class="calendar-badge">Default Calendar</span>
-            </div>
-        }
+
         @if (!string.IsNullOrEmpty(refreshMessage))
         {
             <div class="refresh-message">@refreshMessage</div>
         }
     </div>
 
-    <div class="events-container">
-        @if (events.Any())
+    <div class="calendar-main">
+        @if (currentView == CalendarViewModel.ViewMode.Month)
         {
-            @foreach (var evt in events)
-            {
-                <div class="event-card @(evt.IsBirthday ? "birthday" : "")">
-                    <div class="event-time">
-                        @evt.StartUtc.ToLocalTime().ToString("MMM dd, yyyy")
-                        @if (!evt.IsAllDay)
-                        {
-                            <span>at @evt.StartUtc.ToLocalTime().ToString("h:mm tt")</span>
-                        }
-                    </div>
-                    <div class="event-title">@evt.Title</div>
-                    @if (evt.IsBirthday)
-                    {
-                        <div class="birthday-icon">🎂</div>
-                    }
-                </div>
-            }
+            <MonthViewSimple Events="@events"
+                            OnEventClicked="OnEventClicked"
+                            OnDateSelected="OnDateSelected"
+                            OnMonthChanged="LoadEventsAsync" />
         }
-        else
+        else if (currentView == CalendarViewModel.ViewMode.Week)
         {
-            <div class="empty-state">
-                <p>No calendar events found.</p>
-                @if (!isAuthenticated)
-                {
-                    <p class="hint">Please authenticate with Microsoft Graph in Settings to sync calendar events.</p>
-                }
-                else
-                {
-                    <p class="hint">Waiting for calendar sync... Events will appear shortly.</p>
-                }
-            </div>
+            <WeekView Events="@events"
+                     OnEventClicked="OnEventClicked"
+                     OnDateSelected="OnDateSelected"
+                     OnWeekChanged="LoadEventsAsync" />
+        }
+        else if (currentView == CalendarViewModel.ViewMode.Agenda)
+        {
+            <AgendaView Events="@events"
+                       OnEventClicked="OnEventClicked" />
         }
     </div>
+
+    <!-- Event Details Panel -->
+    <EventDetailsPanel IsOpen="@showEventDetails"
+                      IsOpenChanged="@((value) => showEventDetails = value)"
+                      Event="@selectedEvent" />
+
+    <!-- Calendar Management Panel -->
+    <CalendarManagementPanel IsOpen="@showSettings"
+                           IsOpenChanged="@((value) => showSettings = value)"
+                           Calendars="@calendars"
+                           OnCalendarsChanged="OnCalendarsChanged" />
 </div>
 
 <style>
-    .calendar-page {
-        padding: 2rem;
-        max-width: 800px;
-        margin: 0 auto;
+    .calendar-container {
+        height: 100vh;
+        display: flex;
+        flex-direction: column;
+        background: #f5f5f5;
     }
 
     .calendar-header {
-        margin-bottom: 1.5rem;
+        background: white;
+        padding: 1.5rem 2rem;
+        border-bottom: 1px solid #e0e0e0;
     }
 
-    .header-top {
+    .header-content {
         display: flex;
         justify-content: space-between;
         align-items: center;
-        margin-bottom: 0.75rem;
+        margin-bottom: 1rem;
     }
 
-    .calendar-header h1 {
+    .header-content h1 {
         margin: 0;
+        font-size: 1.75rem;
     }
 
-    .btn-refresh {
-        padding: 0.6rem 1.2rem;
-        background-color: #2196F3;
-        color: white;
-        border: none;
+    .header-actions {
+        display: flex;
+        gap: 0.75rem;
+        align-items: center;
+    }
+
+    .view-switcher {
+        display: flex;
+        gap: 0;
+        background: #f5f5f5;
         border-radius: 6px;
-        font-size: 0.95em;
-        font-weight: 500;
+        padding: 0.25rem;
+    }
+
+    .view-btn {
+        padding: 0.5rem 1rem;
+        border: none;
+        background: transparent;
         cursor: pointer;
-        transition: background-color 0.2s ease, transform 0.1s ease;
+        border-radius: 4px;
+        font-weight: 500;
+        transition: all 0.2s;
+        color: #666;
+    }
+
+    .view-btn:hover {
+        background: rgba(33, 150, 243, 0.1);
+        color: #2196F3;
+    }
+
+    .view-btn.active {
+        background: white;
+        color: #2196F3;
+        font-weight: 600;
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+    }
+
+    .btn-today, .btn-refresh, .btn-settings {
+        padding: 0.6rem 1rem;
+        border: 1px solid #e0e0e0;
+        background: white;
+        cursor: pointer;
+        border-radius: 6px;
+        font-weight: 500;
+        transition: all 0.2s;
         display: flex;
         align-items: center;
         gap: 0.5rem;
     }
 
-        .btn-refresh:hover:not(:disabled) {
-            background-color: #1976D2;
-            transform: translateY(-1px);
-        }
+    .btn-today:hover, .btn-refresh:hover:not(:disabled), .btn-settings:hover {
+        background: #f5f5f5;
+        border-color: #2196F3;
+    }
 
-        .btn-refresh:active:not(:disabled) {
-            transform: translateY(0);
-        }
-
-        .btn-refresh:disabled {
-            background-color: #9E9E9E;
-            cursor: not-allowed;
-        }
+    .btn-refresh:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+    }
 
     .spinner {
         display: inline-block;
@@ -144,146 +193,176 @@
         to { transform: rotate(360deg); }
     }
 
-    .refresh-message {
-        margin-top: 0.5rem;
-        padding: 0.5rem 1rem;
-        background-color: #E8F5E9;
-        color: #2E7D32;
-        border-radius: 4px;
-        font-size: 0.9em;
-    }
-
-    .syncing-calendars {
+    .calendar-badges {
         display: flex;
-        align-items: center;
         flex-wrap: wrap;
         gap: 0.5rem;
-        margin-top: 0.5rem;
-    }
-
-    .syncing-calendars .label {
-        font-size: 0.9em;
-        color: #666;
-        font-weight: 600;
     }
 
     .calendar-badge {
-        display: inline-block;
-        padding: 0.35rem 0.65rem;
-        background-color: #e7f3ff;
-        border: 1px solid #2196F3;
-        color: #0d47a1;
+        display: inline-flex;
+        align-items: center;
+        gap: 0.5rem;
+        padding: 0.4rem 0.8rem;
+        background: white;
+        border: 1px solid #e0e0e0;
+        border-left: 3px solid;
         border-radius: 4px;
-        font-size: 0.85em;
-        font-weight: 500;
+        font-size: 0.85rem;
     }
 
-    .events-container {
-        margin-top: 2rem;
+    .calendar-badge .dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
     }
-    
-    .event-card {
+
+    .refresh-message {
+        margin-top: 1rem;
+        padding: 0.75rem 1rem;
+        background: #E8F5E9;
+        color: #2E7D32;
+        border-radius: 6px;
+        font-size: 0.9rem;
+    }
+
+    .calendar-main {
+        flex: 1;
+        overflow-y: auto;
+        padding: 2rem;
+    }
+
+    /* Event Modal */
+    .event-modal-overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(0,0,0,0.5);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 1000;
+    }
+
+    .event-modal {
         background: white;
-        border-left: 4px solid #512BD4;
-        padding: 1rem;
-        margin-bottom: 1rem;
-        border-radius: 4px;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        border-radius: 8px;
+        max-width: 500px;
+        width: 90%;
+        max-height: 80vh;
+        overflow-y: auto;
+        box-shadow: 0 8px 32px rgba(0,0,0,0.2);
     }
-    
-    .event-card.birthday {
-        border-left-color: #ff6b6b;
-        background: #fff5f5;
+
+    .modal-header {
+        padding: 1.5rem;
+        border-bottom: 1px solid #e0e0e0;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
     }
-    
-    .event-time {
-        font-size: 0.9em;
+
+    .modal-header h3 {
+        margin: 0;
+        font-size: 1.25rem;
+    }
+
+    .close-btn {
+        background: none;
+        border: none;
+        font-size: 1.5rem;
+        cursor: pointer;
         color: #666;
-        margin-bottom: 0.5rem;
+        padding: 0;
+        line-height: 1;
     }
-    
-    .event-title {
-        font-weight: 600;
-        font-size: 1.1em;
+
+    .close-btn:hover {
+        color: #333;
     }
-    
-    .birthday-icon {
-        margin-top: 0.5rem;
-        font-size: 1.5em;
+
+    .modal-body {
+        padding: 1.5rem;
     }
-    
-    .empty-state {
+
+    .event-detail-row {
+        margin-bottom: 1rem;
+    }
+
+    .event-detail-row strong {
+        display: block;
+        margin-bottom: 0.25rem;
+        color: #666;
+        font-size: 0.9rem;
+    }
+
+    .event-detail-row p {
+        margin: 0.5rem 0 0 0;
+        line-height: 1.5;
+    }
+
+    .birthday-banner {
+        margin-top: 1.5rem;
+        padding: 1rem;
+        background: #fff5f5;
+        border: 2px solid #ff6b6b;
+        border-radius: 6px;
         text-align: center;
-        padding: 3rem;
-        color: #999;
-    }
-    
-    .hint {
-        font-size: 0.9em;
-        margin-top: 0.5rem;
+        font-weight: 600;
+        color: #ff6b6b;
     }
 </style>
 
 @code {
-    [Inject] private FamilyWall.Infrastructure.Data.AppDbContext DbContext { get; set; } = default!;
-    [Inject] private FamilyWall.Integrations.Graph.IGraphClient GraphClient { get; set; } = default!;
-    [Inject] private Microsoft.Extensions.Options.IOptions<FamilyWall.Core.Settings.AppSettings> Options { get; set; } = default!;
-    [Inject] private FamilyWall.Services.CalendarSyncService? CalendarSyncService { get; set; }
-
-    private List<FamilyWall.Core.Models.CalendarEvent> events = new();
-    private bool isAuthenticated = false;
-    private List<string> activeCalendarNames = new();
-    private bool isRefreshing = false;
+    private List<CalendarEvent> events = new();
+    private List<CalendarConfiguration> calendars = new();
+    private CalendarEvent? selectedEvent;
+    private bool showEventDetails;
+    private bool showSettings;
+    private bool isRefreshing;
     private string refreshMessage = "";
+    private DateTime currentMonth = DateTime.Today;
+    private CalendarViewModel.ViewMode currentView = CalendarViewModel.ViewMode.Month;
 
     protected override async Task OnInitializedAsync()
     {
-        // Check if authenticated with Microsoft Graph
-        isAuthenticated = await GraphClient.IsAuthenticatedAsync();
-
-        // Load active calendar names
-        await LoadActiveCalendarNamesAsync();
-
-        // Load events from database (cached from CalendarSyncService)
+        await LoadCalendarsAsync();
         await LoadEventsAsync();
     }
 
-    private async Task LoadActiveCalendarNamesAsync()
+    private async Task LoadCalendarsAsync()
     {
-        if (!isAuthenticated) return;
-
-        var settings = Options.Value;
-        if (settings?.Graph?.CalendarIds?.Count > 0)
+        try
         {
-            try
-            {
-                var calendars = await GraphClient.GetCalendarsAsync();
-                activeCalendarNames = settings.Graph.CalendarIds
-                    .Select(id => calendars.FirstOrDefault(c => c.Id == id)?.Name ?? id)
-                    .ToList();
-            }
-            catch
-            {
-                // Silently fail - will show IDs or nothing
-                activeCalendarNames = settings.Graph.CalendarIds.ToList();
-            }
+            calendars = await CalendarService.GetAllCalendarsAsync();
+        }
+        catch (Exception ex)
+        {
+            refreshMessage = $"Error loading calendars: {ex.Message}";
         }
     }
 
     private async Task LoadEventsAsync()
     {
-        var today = DateTime.Today;
-        var endDate = today.AddDays(90);
+        try
+        {
+            // Load events for current month with buffer
+            var start = new DateTime(currentMonth.Year, currentMonth.Month, 1).AddMonths(-1);
+            var end = start.AddMonths(3);
 
-        events = await DbContext.CalendarEvents
-            .Where(e => e.StartUtc >= today && e.StartUtc <= endDate)
-            .OrderBy(e => e.StartUtc)
-            .ToListAsync();
+            events = await EventService.GetEventsAsync(start, end);
+        }
+        catch (Exception ex)
+        {
+            refreshMessage = $"Error loading events: {ex.Message}";
+        }
     }
 
     private async Task RefreshCalendar()
     {
-        if (CalendarSyncService == null || isRefreshing) return;
+        if (isRefreshing) return;
 
         try
         {
@@ -291,13 +370,10 @@
             refreshMessage = "";
             StateHasChanged();
 
-            // Trigger immediate sync
-            await CalendarSyncService.TriggerSyncAsync();
+            await SyncService.TriggerSyncAsync();
+            await Task.Delay(1000); // Wait for sync
 
-            // Wait a moment for database to update
-            await Task.Delay(500);
-
-            // Reload events from database
+            await LoadCalendarsAsync();
             await LoadEventsAsync();
 
             refreshMessage = "✓ Calendar refreshed successfully!";
@@ -315,12 +391,49 @@
         }
         catch (Exception ex)
         {
-            refreshMessage = $"✗ Error refreshing calendar: {ex.Message}";
+            refreshMessage = $"✗ Error: {ex.Message}";
         }
         finally
         {
             isRefreshing = false;
             StateHasChanged();
         }
+    }
+
+    private void GoToToday()
+    {
+        currentMonth = DateTime.Today;
+        StateHasChanged();
+    }
+
+    private void SwitchView(CalendarViewModel.ViewMode newView)
+    {
+        currentView = newView;
+        StateHasChanged();
+    }
+
+    private void OpenSettings()
+    {
+        showSettings = true;
+        StateHasChanged();
+    }
+
+    private void OnEventClicked(CalendarEvent evt)
+    {
+        selectedEvent = evt;
+        showEventDetails = true;
+    }
+
+    private void OnDateSelected(DateTime date)
+    {
+        currentMonth = date;
+        StateHasChanged();
+    }
+
+    private async Task OnCalendarsChanged()
+    {
+        await LoadCalendarsAsync();
+        await LoadEventsAsync();
+        StateHasChanged();
     }
 }

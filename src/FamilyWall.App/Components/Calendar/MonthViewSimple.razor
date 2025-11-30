@@ -1,0 +1,227 @@
+@using FamilyWall.Core.Models
+
+<div class="month-view">
+    <div class="month-header">
+        <button class="nav-btn" @onclick="PreviousMonth">◀</button>
+        <h2>@CurrentMonth.ToString("MMMM yyyy")</h2>
+        <button class="nav-btn" @onclick="NextMonth">▶</button>
+    </div>
+
+    <div class="weekday-headers">
+        <div class="weekday-header">Sun</div>
+        <div class="weekday-header">Mon</div>
+        <div class="weekday-header">Tue</div>
+        <div class="weekday-header">Wed</div>
+        <div class="weekday-header">Thu</div>
+        <div class="weekday-header">Fri</div>
+        <div class="weekday-header">Sat</div>
+    </div>
+
+    <div class="calendar-grid">
+        @foreach (var day in GetDaysForMonth())
+        {
+            var dayEvents = GetEventsForDay(day);
+            var isToday = day.Date == DateTime.Today;
+            var isCurrentMonth = day.Month == CurrentMonth.Month;
+
+            <div class="calendar-day @(isToday ? "today" : "") @(!isCurrentMonth ? "other-month" : "")"
+                 @onclick="() => OnDayClicked(day)">
+                <div class="day-number">@day.Day</div>
+
+                @if (dayEvents.Any())
+                {
+                    <div class="event-dots">
+                        @foreach (var evt in dayEvents.Take(3))
+                        {
+                            <div class="event-dot"
+                                 style="background-color: @(evt.Calendar?.Color ?? "#3788D8")"
+                                 title="@evt.Title"
+                                 @onclick:stopPropagation="true"
+                                 @onclick="async () => await OnEventClicked.InvokeAsync(evt)">
+                            </div>
+                        }
+                        @if (dayEvents.Count > 3)
+                        {
+                            <span class="more-events">+@(dayEvents.Count - 3)</span>
+                        }
+                    </div>
+                }
+            </div>
+        }
+    </div>
+</div>
+
+<style>
+    .month-view {
+        background: white;
+        border-radius: 8px;
+        padding: 1rem;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    }
+
+    .month-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 1rem;
+        padding-bottom: 1rem;
+        border-bottom: 1px solid #e0e0e0;
+    }
+
+    .month-header h2 {
+        margin: 0;
+        font-size: 1.25rem;
+    }
+
+    .nav-btn {
+        background: none;
+        border: 1px solid #e0e0e0;
+        padding: 0.5rem 1rem;
+        cursor: pointer;
+        border-radius: 4px;
+        font-size: 1rem;
+        transition: all 0.2s;
+    }
+
+    .nav-btn:hover {
+        background: #f5f5f5;
+        border-color: #2196F3;
+    }
+
+    .weekday-headers {
+        display: grid;
+        grid-template-columns: repeat(7, 1fr);
+        gap: 1px;
+        margin-bottom: 0.5rem;
+    }
+
+    .weekday-header {
+        text-align: center;
+        font-weight: 600;
+        color: #666;
+        padding: 0.5rem;
+        font-size: 0.9rem;
+    }
+
+    .calendar-grid {
+        display: grid;
+        grid-template-columns: repeat(7, 1fr);
+        gap: 1px;
+        background: #e0e0e0;
+        border: 1px solid #e0e0e0;
+    }
+
+    .calendar-day {
+        background: white;
+        min-height: 100px;
+        padding: 0.5rem;
+        cursor: pointer;
+        transition: background 0.2s;
+        position: relative;
+    }
+
+    .calendar-day:hover {
+        background: #f9f9f9;
+    }
+
+    .calendar-day.today {
+        background: #e3f2fd;
+    }
+
+    .calendar-day.other-month {
+        opacity: 0.4;
+    }
+
+    .day-number {
+        font-weight: 600;
+        margin-bottom: 0.25rem;
+        font-size: 0.9rem;
+    }
+
+    .calendar-day.today .day-number {
+        color: #2196F3;
+        font-weight: 700;
+    }
+
+    .event-dots {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+        margin-top: 0.25rem;
+    }
+
+    .event-dot {
+        height: 6px;
+        border-radius: 3px;
+        cursor: pointer;
+    }
+
+    .event-dot:hover {
+        opacity: 0.8;
+    }
+
+    .more-events {
+        font-size: 0.75rem;
+        color: #666;
+        margin-top: 2px;
+    }
+</style>
+
+@code {
+    [Parameter]
+    public List<CalendarEvent> Events { get; set; } = new();
+
+    [Parameter]
+    public EventCallback<CalendarEvent> OnEventClicked { get; set; }
+
+    [Parameter]
+    public EventCallback<DateTime> OnDateSelected { get; set; }
+
+    [Parameter]
+    public EventCallback OnMonthChanged { get; set; }
+
+    private DateTime CurrentMonth { get; set; } = DateTime.Today;
+
+    private List<DateTime> GetDaysForMonth()
+    {
+        var days = new List<DateTime>();
+        var firstDay = new DateTime(CurrentMonth.Year, CurrentMonth.Month, 1);
+        var startDayOfWeek = (int)firstDay.DayOfWeek; // 0 = Sunday
+
+        // Add days from previous month
+        var prevMonthStart = firstDay.AddDays(-startDayOfWeek);
+
+        // Add 42 days (6 weeks) to ensure full grid
+        for (int i = 0; i < 42; i++)
+        {
+            days.Add(prevMonthStart.AddDays(i));
+        }
+
+        return days;
+    }
+
+    private List<CalendarEvent> GetEventsForDay(DateTime day)
+    {
+        return Events
+            .Where(e => e.StartUtc.ToLocalTime().Date == day.Date)
+            .OrderBy(e => e.StartUtc)
+            .ToList();
+    }
+
+    private async Task PreviousMonth()
+    {
+        CurrentMonth = CurrentMonth.AddMonths(-1);
+        await OnMonthChanged.InvokeAsync();
+    }
+
+    private async Task NextMonth()
+    {
+        CurrentMonth = CurrentMonth.AddMonths(1);
+        await OnMonthChanged.InvokeAsync();
+    }
+
+    private async Task OnDayClicked(DateTime day)
+    {
+        await OnDateSelected.InvokeAsync(day);
+    }
+}

@@ -1,0 +1,724 @@
+@using FamilyWall.Core.Models
+@using FamilyWall.Services
+
+<div class="calendar-management-panel @(IsOpen ? "open" : "")">
+    <div class="panel-overlay" @onclick="Close"></div>
+
+    <div class="panel-content">
+        <div class="panel-header">
+            <h2>Calendar Settings</h2>
+            <button class="close-btn" @onclick="Close">✕</button>
+        </div>
+
+        <div class="panel-body">
+            <!-- Connected Calendars Section -->
+            <div class="section">
+                <div class="section-header">
+                    <h3>📅 My Calendars</h3>
+                    <button class="btn-secondary" @onclick="DiscoverCalendars" disabled="@isDiscovering">
+                        @if (isDiscovering)
+                        {
+                            <span class="spinner">⟳</span>
+                            <span>Discovering...</span>
+                        }
+                        else
+                        {
+                            <span>🔍 Discover Calendars</span>
+                        }
+                    </button>
+                </div>
+
+                @if (!string.IsNullOrEmpty(statusMessage))
+                {
+                    <div class="status-message @statusMessageType">
+                        @statusMessage
+                    </div>
+                }
+
+                <div class="calendar-list">
+                    @if (!Calendars.Any())
+                    {
+                        <div class="empty-state">
+                            <div class="empty-icon">📆</div>
+                            <div class="empty-text">No calendars found</div>
+                            <div class="empty-subtext">Click "Discover Calendars" to find your Outlook calendars</div>
+                        </div>
+                    }
+                    else
+                    {
+                        @foreach (var calendar in Calendars.OrderBy(c => c.DisplayOrder))
+                        {
+                            <div class="calendar-item">
+                                <div class="calendar-checkbox">
+                                    <input type="checkbox"
+                                           id="calendar-@calendar.Id"
+                                           checked="@calendar.IsEnabled"
+                                           @onchange="(e) => ToggleCalendar(calendar, (bool)e.Value!)" />
+                                </div>
+
+                                <div class="calendar-color-indicator" style="background-color: @calendar.Color"></div>
+
+                                <div class="calendar-info">
+                                    <div class="calendar-name">
+                                        @calendar.Name
+                                        @if (calendar.IsDefault)
+                                        {
+                                            <span class="default-badge">Default</span>
+                                        }
+                                    </div>
+                                    <div class="calendar-meta">
+                                        <span class="calendar-owner">@calendar.Owner</span>
+                                        @if (calendar.LastSyncUtc.HasValue)
+                                        {
+                                            <span class="separator">•</span>
+                                            <span class="sync-time">Synced @FormatSyncTime(calendar.LastSyncUtc.Value)</span>
+                                        }
+                                    </div>
+                                    <div class="calendar-stats">
+                                        <span class="event-count">@calendar.Events.Count events</span>
+                                        @if (!calendar.IsEnabled)
+                                        {
+                                            <span class="separator">•</span>
+                                            <span class="disabled-text">Hidden</span>
+                                        }
+                                    </div>
+                                </div>
+
+                                <div class="calendar-actions">
+                                    <button class="btn-icon"
+                                            title="Change color"
+                                            @onclick="() => OpenColorPicker(calendar)">
+                                        🎨
+                                    </button>
+                                    <button class="btn-icon"
+                                            title="Sync now"
+                                            @onclick="() => SyncCalendar(calendar)"
+                                            disabled="@(syncingCalendarIds.Contains(calendar.Id))">
+                                        @if (syncingCalendarIds.Contains(calendar.Id))
+                                        {
+                                            <span class="spinner">⟳</span>
+                                        }
+                                        else
+                                        {
+                                            <span>🔄</span>
+                                        }
+                                    </button>
+                                </div>
+                            </div>
+
+                            @if (selectedCalendarForColor?.Id == calendar.Id)
+                            {
+                                <div class="color-picker-dropdown">
+                                    <div class="color-picker-header">Choose Color</div>
+                                    <div class="color-options">
+                                        @foreach (var color in PresetColors)
+                                        {
+                                            <div class="color-option @(calendar.Color == color ? "selected" : "")"
+                                                 style="background-color: @color"
+                                                 @onclick="() => ChangeCalendarColor(calendar, color)">
+                                                @if (calendar.Color == color)
+                                                {
+                                                    <span class="checkmark">✓</span>
+                                                }
+                                            </div>
+                                        }
+                                    </div>
+                                </div>
+                            }
+                        }
+                    }
+                </div>
+            </div>
+
+            <!-- Sync Settings Section -->
+            <div class="section">
+                <div class="section-header">
+                    <h3>⚙️ Sync Settings</h3>
+                </div>
+
+                <div class="settings-group">
+                    <div class="setting-item">
+                        <label>Default sync interval</label>
+                        <select class="form-select" @bind="defaultSyncInterval">
+                            <option value="5">5 minutes</option>
+                            <option value="15">15 minutes</option>
+                            <option value="30">30 minutes</option>
+                            <option value="60">1 hour</option>
+                        </select>
+                    </div>
+
+                    <div class="setting-item">
+                        <label>
+                            <input type="checkbox" @bind="syncPastEvents" />
+                            Sync past events (last 30 days)
+                        </label>
+                    </div>
+
+                    <div class="setting-item">
+                        <label>Days to sync ahead</label>
+                        <select class="form-select" @bind="futureDaysToSync">
+                            <option value="30">30 days</option>
+                            <option value="60">60 days</option>
+                            <option value="90">90 days</option>
+                            <option value="180">180 days</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="section-actions">
+                    <button class="btn-primary" @onclick="SyncAllCalendars" disabled="@isSyncingAll">
+                        @if (isSyncingAll)
+                        {
+                            <span class="spinner">⟳</span>
+                            <span>Syncing All...</span>
+                        }
+                        else
+                        {
+                            <span>Sync All Calendars Now</span>
+                        }
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+    .calendar-management-panel {
+        position: fixed;
+        top: 0;
+        right: 0;
+        bottom: 0;
+        left: 0;
+        z-index: 1000;
+        pointer-events: none;
+        opacity: 0;
+        transition: opacity 0.3s;
+    }
+
+    .calendar-management-panel.open {
+        pointer-events: all;
+        opacity: 1;
+    }
+
+    .panel-overlay {
+        position: absolute;
+        top: 0;
+        right: 0;
+        bottom: 0;
+        left: 0;
+        background: rgba(0, 0, 0, 0.5);
+    }
+
+    .panel-content {
+        position: absolute;
+        top: 0;
+        right: 0;
+        bottom: 0;
+        width: 500px;
+        max-width: 90vw;
+        background: white;
+        box-shadow: -4px 0 16px rgba(0, 0, 0, 0.2);
+        display: flex;
+        flex-direction: column;
+        transform: translateX(100%);
+        transition: transform 0.3s;
+    }
+
+    .calendar-management-panel.open .panel-content {
+        transform: translateX(0);
+    }
+
+    .panel-header {
+        padding: 1.5rem 2rem;
+        border-bottom: 1px solid #e0e0e0;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        background: #f9f9f9;
+    }
+
+    .panel-header h2 {
+        margin: 0;
+        font-size: 1.5rem;
+    }
+
+    .close-btn {
+        background: none;
+        border: none;
+        font-size: 1.5rem;
+        cursor: pointer;
+        color: #666;
+        padding: 0.25rem;
+        line-height: 1;
+        transition: color 0.2s;
+    }
+
+    .close-btn:hover {
+        color: #333;
+    }
+
+    .panel-body {
+        flex: 1;
+        overflow-y: auto;
+        padding: 1.5rem 2rem;
+    }
+
+    .section {
+        margin-bottom: 2rem;
+    }
+
+    .section-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 1rem;
+    }
+
+    .section-header h3 {
+        margin: 0;
+        font-size: 1.1rem;
+        font-weight: 600;
+    }
+
+    .status-message {
+        padding: 0.75rem 1rem;
+        border-radius: 6px;
+        margin-bottom: 1rem;
+        font-size: 0.9rem;
+    }
+
+    .status-message.success {
+        background: #E8F5E9;
+        color: #2E7D32;
+    }
+
+    .status-message.error {
+        background: #FFEBEE;
+        color: #C62828;
+    }
+
+    .calendar-list {
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+    }
+
+    .empty-state {
+        padding: 3rem 1rem;
+        text-align: center;
+    }
+
+    .empty-icon {
+        font-size: 3rem;
+        margin-bottom: 1rem;
+        opacity: 0.3;
+    }
+
+    .empty-text {
+        font-size: 1.1rem;
+        font-weight: 600;
+        color: #333;
+        margin-bottom: 0.5rem;
+    }
+
+    .empty-subtext {
+        color: #666;
+        font-size: 0.9rem;
+    }
+
+    .calendar-item {
+        display: flex;
+        align-items: center;
+        padding: 1rem;
+        background: white;
+        border: 1px solid #e0e0e0;
+        border-radius: 8px;
+        transition: all 0.2s;
+    }
+
+    .calendar-item:hover {
+        border-color: #2196F3;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    }
+
+    .calendar-checkbox {
+        margin-right: 1rem;
+    }
+
+    .calendar-checkbox input[type="checkbox"] {
+        width: 20px;
+        height: 20px;
+        cursor: pointer;
+    }
+
+    .calendar-color-indicator {
+        width: 4px;
+        height: 100%;
+        border-radius: 2px;
+        margin-right: 1rem;
+        align-self: stretch;
+    }
+
+    .calendar-info {
+        flex: 1;
+        min-width: 0;
+    }
+
+    .calendar-name {
+        font-weight: 600;
+        font-size: 1rem;
+        margin-bottom: 0.25rem;
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+    }
+
+    .default-badge {
+        background: #2196F3;
+        color: white;
+        padding: 0.2rem 0.5rem;
+        border-radius: 4px;
+        font-size: 0.7rem;
+        font-weight: 600;
+    }
+
+    .calendar-meta, .calendar-stats {
+        font-size: 0.8rem;
+        color: #666;
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        flex-wrap: wrap;
+    }
+
+    .separator {
+        color: #ccc;
+    }
+
+    .disabled-text {
+        color: #999;
+        font-style: italic;
+    }
+
+    .calendar-actions {
+        display: flex;
+        gap: 0.25rem;
+        margin-left: 1rem;
+    }
+
+    .btn-icon {
+        background: none;
+        border: 1px solid #e0e0e0;
+        padding: 0.5rem;
+        cursor: pointer;
+        border-radius: 6px;
+        font-size: 1.1rem;
+        transition: all 0.2s;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 36px;
+        height: 36px;
+    }
+
+    .btn-icon:hover:not(:disabled) {
+        background: #f5f5f5;
+        border-color: #2196F3;
+    }
+
+    .btn-icon:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+    }
+
+    .color-picker-dropdown {
+        margin-top: 0.5rem;
+        padding: 1rem;
+        background: #f9f9f9;
+        border: 1px solid #e0e0e0;
+        border-radius: 8px;
+    }
+
+    .color-picker-header {
+        font-weight: 600;
+        margin-bottom: 0.75rem;
+        font-size: 0.9rem;
+    }
+
+    .color-options {
+        display: grid;
+        grid-template-columns: repeat(8, 1fr);
+        gap: 0.5rem;
+    }
+
+    .color-option {
+        width: 40px;
+        height: 40px;
+        border-radius: 8px;
+        cursor: pointer;
+        border: 2px solid transparent;
+        transition: all 0.2s;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: white;
+        font-weight: 700;
+    }
+
+    .color-option:hover {
+        border-color: #333;
+        transform: scale(1.1);
+    }
+
+    .color-option.selected {
+        border-color: #333;
+    }
+
+    .settings-group {
+        display: flex;
+        flex-direction: column;
+        gap: 1rem;
+    }
+
+    .setting-item label {
+        display: block;
+        font-weight: 500;
+        margin-bottom: 0.5rem;
+        color: #333;
+    }
+
+    .form-select {
+        width: 100%;
+        padding: 0.5rem;
+        border: 1px solid #e0e0e0;
+        border-radius: 6px;
+        font-size: 0.9rem;
+    }
+
+    .section-actions {
+        margin-top: 1.5rem;
+    }
+
+    .btn-primary, .btn-secondary {
+        padding: 0.75rem 1.5rem;
+        border: none;
+        border-radius: 6px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.2s;
+        display: inline-flex;
+        align-items: center;
+        gap: 0.5rem;
+    }
+
+    .btn-primary {
+        background: #2196F3;
+        color: white;
+        width: 100%;
+        justify-content: center;
+    }
+
+    .btn-primary:hover:not(:disabled) {
+        background: #1976D2;
+    }
+
+    .btn-secondary {
+        background: white;
+        color: #2196F3;
+        border: 1px solid #2196F3;
+    }
+
+    .btn-secondary:hover:not(:disabled) {
+        background: #e3f2fd;
+    }
+
+    .btn-primary:disabled, .btn-secondary:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+    }
+
+    .spinner {
+        display: inline-block;
+        animation: spin 1s linear infinite;
+    }
+
+    @@keyframes spin {
+        from { transform: rotate(0deg); }
+        to { transform: rotate(360deg); }
+    }
+</style>
+
+@code {
+    [Parameter]
+    public bool IsOpen { get; set; }
+
+    [Parameter]
+    public EventCallback<bool> IsOpenChanged { get; set; }
+
+    [Parameter]
+    public List<CalendarConfiguration> Calendars { get; set; } = new();
+
+    [Parameter]
+    public EventCallback OnCalendarsChanged { get; set; }
+
+    [Inject]
+    private ICalendarService CalendarService { get; set; } = default!;
+
+    [Inject]
+    private CalendarSyncService SyncService { get; set; } = default!;
+
+    private bool isDiscovering;
+    private bool isSyncingAll;
+    private HashSet<int> syncingCalendarIds = new();
+    private CalendarConfiguration? selectedCalendarForColor;
+    private string statusMessage = "";
+    private string statusMessageType = "success";
+    private int defaultSyncInterval = 15;
+    private bool syncPastEvents = false;
+    private int futureDaysToSync = 90;
+
+    private readonly string[] PresetColors = new[]
+    {
+        "#3788D8", "#D83737", "#37D875", "#D87537",
+        "#8B37D8", "#37D8D8", "#D8D837", "#D837A7"
+    };
+
+    private async Task Close()
+    {
+        await IsOpenChanged.InvokeAsync(false);
+    }
+
+    private async Task DiscoverCalendars()
+    {
+        isDiscovering = true;
+        statusMessage = "";
+        StateHasChanged();
+
+        try
+        {
+            var discovered = await CalendarService.DiscoverCalendarsAsync("Graph");
+
+            foreach (var calendar in discovered)
+            {
+                var existing = Calendars.FirstOrDefault(c => c.CalendarId == calendar.CalendarId);
+                if (existing == null)
+                {
+                    await CalendarService.AddCalendarAsync(calendar);
+                }
+            }
+
+            await OnCalendarsChanged.InvokeAsync();
+            statusMessage = $"✓ Discovered {discovered.Count} calendar(s)";
+            statusMessageType = "success";
+        }
+        catch (Exception ex)
+        {
+            statusMessage = $"✗ Error: {ex.Message}";
+            statusMessageType = "error";
+        }
+        finally
+        {
+            isDiscovering = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task ToggleCalendar(CalendarConfiguration calendar, bool enabled)
+    {
+        try
+        {
+            await CalendarService.SetCalendarEnabledAsync(calendar.Id, enabled);
+            calendar.IsEnabled = enabled;
+            await OnCalendarsChanged.InvokeAsync();
+        }
+        catch (Exception ex)
+        {
+            statusMessage = $"✗ Error: {ex.Message}";
+            statusMessageType = "error";
+        }
+    }
+
+    private void OpenColorPicker(CalendarConfiguration calendar)
+    {
+        selectedCalendarForColor = selectedCalendarForColor?.Id == calendar.Id ? null : calendar;
+    }
+
+    private async Task ChangeCalendarColor(CalendarConfiguration calendar, string color)
+    {
+        try
+        {
+            await CalendarService.SetCalendarColorAsync(calendar.Id, color);
+            calendar.Color = color;
+            selectedCalendarForColor = null;
+            await OnCalendarsChanged.InvokeAsync();
+        }
+        catch (Exception ex)
+        {
+            statusMessage = $"✗ Error: {ex.Message}";
+            statusMessageType = "error";
+        }
+    }
+
+    private async Task SyncCalendar(CalendarConfiguration calendar)
+    {
+        syncingCalendarIds.Add(calendar.Id);
+        StateHasChanged();
+
+        try
+        {
+            await CalendarService.SyncCalendarAsync(calendar.Id);
+            await OnCalendarsChanged.InvokeAsync();
+            statusMessage = $"✓ Synced {calendar.Name}";
+            statusMessageType = "success";
+        }
+        catch (Exception ex)
+        {
+            statusMessage = $"✗ Error syncing {calendar.Name}: {ex.Message}";
+            statusMessageType = "error";
+        }
+        finally
+        {
+            syncingCalendarIds.Remove(calendar.Id);
+            StateHasChanged();
+        }
+    }
+
+    private async Task SyncAllCalendars()
+    {
+        isSyncingAll = true;
+        StateHasChanged();
+
+        try
+        {
+            await SyncService.TriggerSyncAsync();
+            await Task.Delay(1000);
+            await OnCalendarsChanged.InvokeAsync();
+            statusMessage = "✓ All calendars synced successfully";
+            statusMessageType = "success";
+        }
+        catch (Exception ex)
+        {
+            statusMessage = $"✗ Error: {ex.Message}";
+            statusMessageType = "error";
+        }
+        finally
+        {
+            isSyncingAll = false;
+            StateHasChanged();
+        }
+    }
+
+    private string FormatSyncTime(DateTime syncTime)
+    {
+        var elapsed = DateTime.UtcNow - syncTime;
+
+        if (elapsed.TotalMinutes < 1)
+            return "just now";
+        if (elapsed.TotalMinutes < 60)
+            return $"{(int)elapsed.TotalMinutes} min ago";
+        if (elapsed.TotalHours < 24)
+            return $"{(int)elapsed.TotalHours} hr ago";
+        return $"{(int)elapsed.TotalDays} days ago";
+    }
+}
