@@ -71,6 +71,13 @@ public static class MauiProgram
 		builder.Services.AddSingleton<FamilyWall.Core.Abstractions.IScreenStateService, FamilyWall.Services.ScreenStateService>();
 		builder.Services.AddSingleton<FamilyWall.Core.Abstractions.IPresenceDetector, FamilyWall.Services.MockPresenceDetector>();
 
+		// Calendar Services
+		builder.Services.AddScoped<ICalendarService, CalendarService>();
+		builder.Services.AddScoped<ICalendarEventService, CalendarEventService>();
+
+		// Sync Strategies
+		builder.Services.AddSingleton<ISyncStrategy, GraphSyncStrategy>();
+
 		// Background Services
 		builder.Services.AddHostedService<PresenceService>();
 

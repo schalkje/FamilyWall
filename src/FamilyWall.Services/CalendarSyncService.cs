@@ -10,29 +10,41 @@ using Microsoft.Extensions.Options;
 namespace FamilyWall.Services;
 
 /// <summary>
-/// Background service that syncs calendar events from Microsoft Graph with local cache.
-/// Implements short-lived cache with TTL to prefer live reads while supporting brief offline continuity.
+/// Background service that syncs calendar events from multiple calendars with local cache.
+/// Implements configurable sync strategies for different calendar sources.
 /// </summary>
 public class CalendarSyncService : BackgroundService
 {
+    private readonly ICalendarService _calendarService;
     private readonly IGraphClient _graphClient;
     private readonly IDbContextFactory<AppDbContext> _dbContextFactory;
     private readonly CalendarSettings _settings;
     private readonly ILogger<CalendarSyncService> _logger;
+    private readonly Dictionary<string, ISyncStrategy> _syncStrategies = new();
     private DateTime _lastSyncTime = DateTime.MinValue;
 
     public CalendarSyncService(
+        ICalendarService calendarService,
         IGraphClient graphClient,
         IDbContextFactory<AppDbContext> dbContextFactory,
         IOptions<AppSettings> appSettings,
-        ILogger<CalendarSyncService> logger)
+        ILogger<CalendarSyncService> logger,
+        IEnumerable<ISyncStrategy> syncStrategies)
     {
+        _calendarService = calendarService;
         _graphClient = graphClient;
         _dbContextFactory = dbContextFactory;
         _settings = appSettings.Value.Calendar;
         _logger = logger;
 
-        _logger.LogInformation("CalendarSyncService constructed with CacheTtlMinutes={Minutes}", _settings.CacheTtlMinutes);
+        // Register sync strategies
+        foreach (var strategy in syncStrategies)
+        {
+            _syncStrategies[strategy.Source] = strategy;
+        }
+
+        _logger.LogInformation("CalendarSyncService constructed with {StrategyCount} sync strategies",
+            _syncStrategies.Count);
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -46,30 +58,30 @@ public class CalendarSyncService : BackgroundService
 
             _logger.LogInformation("CalendarSyncService: Initial delay complete, starting sync loop");
 
-        while (!stoppingToken.IsCancellationRequested)
-        {
-            try
+            while (!stoppingToken.IsCancellationRequested)
             {
-                await SyncCalendarEventsAsync(stoppingToken);
+                try
+                {
+                    await SyncAllCalendarsAsync(stoppingToken);
 
-                // Wait for the configured TTL before next sync
-                var syncInterval = TimeSpan.FromMinutes(_settings.CacheTtlMinutes);
-                _logger.LogDebug("Next calendar sync in {Minutes} minutes", _settings.CacheTtlMinutes);
-                await Task.Delay(syncInterval, stoppingToken);
+                    // Use the minimum sync interval from all calendars or default
+                    var minInterval = await GetMinimumSyncIntervalAsync(stoppingToken);
+                    _logger.LogDebug("Next calendar sync in {Minutes} minutes", minInterval);
+                    await Task.Delay(TimeSpan.FromMinutes(minInterval), stoppingToken);
+                }
+                catch (OperationCanceledException)
+                {
+                    // Expected during shutdown
+                    break;
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Error in calendar sync loop, retrying in 5 minutes");
+                    await Task.Delay(TimeSpan.FromMinutes(5), stoppingToken);
+                }
             }
-            catch (OperationCanceledException)
-            {
-                // Expected during shutdown
-                break;
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error in calendar sync loop, retrying in 5 minutes");
-                await Task.Delay(TimeSpan.FromMinutes(5), stoppingToken);
-            }
-        }
 
-        _logger.LogInformation("CalendarSyncService stopped");
+            _logger.LogInformation("CalendarSyncService stopped");
         }
         catch (Exception ex)
         {
@@ -78,109 +90,150 @@ public class CalendarSyncService : BackgroundService
         }
     }
 
-    private async Task SyncCalendarEventsAsync(CancellationToken cancellationToken)
+    private async Task<int> GetMinimumSyncIntervalAsync(CancellationToken cancellationToken)
+    {
+        var calendars = await _calendarService.GetEnabledCalendarsAsync(cancellationToken);
+        if (calendars.Count == 0)
+        {
+            return _settings.CacheTtlMinutes;
+        }
+
+        var minInterval = calendars.Min(c => c.SyncIntervalMinutes);
+        return Math.Max(minInterval, 5); // Minimum 5 minutes
+    }
+
+    private async Task SyncAllCalendarsAsync(CancellationToken cancellationToken)
+    {
+        var enabledCalendars = await _calendarService.GetEnabledCalendarsAsync(cancellationToken);
+
+        if (enabledCalendars.Count == 0)
+        {
+            _logger.LogInformation("No enabled calendars to sync");
+            return;
+        }
+
+        _logger.LogInformation("Syncing {Count} enabled calendars", enabledCalendars.Count);
+
+        // Sync calendars in parallel for better performance
+        var syncTasks = enabledCalendars.Select(calendar =>
+            SyncCalendarAsync(calendar, cancellationToken));
+
+        await Task.WhenAll(syncTasks);
+
+        _lastSyncTime = DateTime.UtcNow;
+    }
+
+    private async Task SyncCalendarAsync(CalendarConfiguration calendar, CancellationToken cancellationToken)
     {
         try
         {
-            // Check if authenticated
-            var isAuthenticated = await _graphClient.IsAuthenticatedAsync(cancellationToken);
-            if (!isAuthenticated)
+            _logger.LogDebug("Syncing calendar: {Name} ({Source})", calendar.Name, calendar.Source);
+
+            // Check if authenticated for Graph calendars
+            if (calendar.Source == "Graph")
             {
-                _logger.LogWarning("Not authenticated with Microsoft Graph, skipping calendar sync");
+                var isAuthenticated = await _graphClient.IsAuthenticatedAsync(cancellationToken);
+                if (!isAuthenticated)
+                {
+                    _logger.LogWarning("Not authenticated with Microsoft Graph, skipping calendar {Name}", calendar.Name);
+                    return;
+                }
+            }
+
+            var strategy = _syncStrategies.GetValueOrDefault(calendar.Source);
+            if (strategy == null)
+            {
+                _logger.LogWarning("No sync strategy found for source: {Source}", calendar.Source);
                 return;
             }
 
-            // Fetch events for the next 90 days
-            var start = DateTime.Today;
-            var end = start.AddDays(90);
+            var start = calendar.SyncPastEvents ? DateTime.Today.AddDays(-30) : DateTime.Today;
+            var end = DateTime.Today.AddDays(calendar.FutureDaysToSync);
 
-            _logger.LogInformation("Syncing calendar events from {Start:d} to {End:d}", start, end);
+            var events = await strategy.FetchEventsAsync(calendar.CalendarId, start, end, cancellationToken);
 
-            var graphEvents = await _graphClient.GetCalendarEventsAsync(start, end, cancellationToken);
+            await UpsertEventsAsync(calendar, events, cancellationToken);
 
-            _logger.LogInformation("Fetched {Count} events from Microsoft Graph", graphEvents.Count);
+            // Update last sync time
+            calendar.LastSyncUtc = DateTime.UtcNow;
+            await _calendarService.UpdateCalendarAsync(calendar, cancellationToken);
 
-            if (graphEvents.Count == 0)
-            {
-                _logger.LogInformation("No calendar events found in the date range");
-
-                // Still update the database to clear old events
-                await using var emptyDbContext = await _dbContextFactory.CreateDbContextAsync(cancellationToken);
-                var allOldEvents = await emptyDbContext.CalendarEvents
-                    .Where(e => e.Source == "Graph")
-                    .ToListAsync(cancellationToken);
-
-                if (allOldEvents.Count > 0)
-                {
-                    emptyDbContext.CalendarEvents.RemoveRange(allOldEvents);
-                    await emptyDbContext.SaveChangesAsync(cancellationToken);
-                    _logger.LogInformation("Cleared {Count} old calendar events", allOldEvents.Count);
-                }
-
-                _lastSyncTime = DateTime.UtcNow;
-                return;
-            }
-
-            // Store events in database
-            await using var dbContext = await _dbContextFactory.CreateDbContextAsync(cancellationToken);
-
-            // Remove old cached events (beyond the current sync range)
-            var oldEvents = await dbContext.CalendarEvents
-                .Where(e => e.Source == "Graph" && (e.StartUtc < start || e.StartUtc > end))
-                .ToListAsync(cancellationToken);
-
-            if (oldEvents.Count > 0)
-            {
-                dbContext.CalendarEvents.RemoveRange(oldEvents);
-                _logger.LogDebug("Removed {Count} old calendar events", oldEvents.Count);
-            }
-
-            // Upsert new events
-            foreach (var graphEvent in graphEvents)
-            {
-                var existingEvent = await dbContext.CalendarEvents
-                    .FirstOrDefaultAsync(e => e.ProviderKey == graphEvent.Id && e.Source == "Graph", cancellationToken);
-
-                if (existingEvent != null)
-                {
-                    // Update existing event
-                    existingEvent.Title = graphEvent.Subject;
-                    existingEvent.StartUtc = graphEvent.Start;
-                    existingEvent.EndUtc = graphEvent.End;
-                    existingEvent.IsAllDay = graphEvent.IsAllDay;
-                    existingEvent.IsBirthday = graphEvent.IsBirthday;
-                }
-                else
-                {
-                    // Add new event
-                    dbContext.CalendarEvents.Add(new CalendarEvent
-                    {
-                        ProviderKey = graphEvent.Id,
-                        Title = graphEvent.Subject,
-                        StartUtc = graphEvent.Start,
-                        EndUtc = graphEvent.End,
-                        IsAllDay = graphEvent.IsAllDay,
-                        IsBirthday = graphEvent.IsBirthday,
-                        Source = "Graph",
-                        ETag = null
-                    });
-                }
-            }
-
-            await dbContext.SaveChangesAsync(cancellationToken);
-
-            _lastSyncTime = DateTime.UtcNow;
-            _logger.LogInformation("Successfully synced {Count} calendar events", graphEvents.Count);
-        }
-        catch (InvalidOperationException ex) when (ex.Message.Contains("authentication required"))
-        {
-            _logger.LogWarning("Authentication required for calendar sync. Please authenticate with Microsoft Graph.");
+            _logger.LogInformation("Synced {Count} events for calendar: {Name}", events.Count, calendar.Name);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to sync calendar events");
-            throw;
+            _logger.LogError(ex, "Failed to sync calendar: {Name}", calendar.Name);
         }
+    }
+
+    private async Task UpsertEventsAsync(
+        CalendarConfiguration calendar,
+        List<GraphEvent> events,
+        CancellationToken cancellationToken)
+    {
+        await using var dbContext = await _dbContextFactory.CreateDbContextAsync(cancellationToken);
+
+        // Get existing events for this calendar
+        var existingEvents = await dbContext.CalendarEvents
+            .Where(e => e.CalendarId == calendar.CalendarId)
+            .ToDictionaryAsync(e => e.ProviderKey, cancellationToken);
+
+        var updatedCount = 0;
+        var addedCount = 0;
+
+        foreach (var graphEvent in events)
+        {
+            if (existingEvents.TryGetValue(graphEvent.Id, out var existingEvent))
+            {
+                // Update existing event
+                existingEvent.Title = graphEvent.Subject;
+                existingEvent.StartUtc = graphEvent.Start;
+                existingEvent.EndUtc = graphEvent.End;
+                existingEvent.IsAllDay = graphEvent.IsAllDay;
+                existingEvent.IsBirthday = graphEvent.IsBirthday;
+                existingEvent.UpdatedUtc = DateTime.UtcNow;
+                existingEvent.LastSyncUtc = DateTime.UtcNow;
+                updatedCount++;
+            }
+            else
+            {
+                // Add new event
+                var newEvent = new CalendarEvent
+                {
+                    ProviderKey = graphEvent.Id,
+                    CalendarId = calendar.CalendarId,
+                    Title = graphEvent.Subject,
+                    StartUtc = graphEvent.Start,
+                    EndUtc = graphEvent.End,
+                    IsAllDay = graphEvent.IsAllDay,
+                    IsBirthday = graphEvent.IsBirthday,
+                    Source = calendar.Source,
+                    CreatedUtc = DateTime.UtcNow,
+                    UpdatedUtc = DateTime.UtcNow,
+                    LastSyncUtc = DateTime.UtcNow
+                };
+                dbContext.CalendarEvents.Add(newEvent);
+                addedCount++;
+            }
+        }
+
+        // Remove events that no longer exist in the source
+        var providerKeys = events.Select(e => e.Id).ToHashSet();
+        var eventsToRemove = existingEvents.Values
+            .Where(e => !providerKeys.Contains(e.ProviderKey))
+            .ToList();
+
+        if (eventsToRemove.Count > 0)
+        {
+            dbContext.CalendarEvents.RemoveRange(eventsToRemove);
+            _logger.LogDebug("Removed {Count} deleted events from calendar {Name}",
+                eventsToRemove.Count, calendar.Name);
+        }
+
+        await dbContext.SaveChangesAsync(cancellationToken);
+
+        _logger.LogDebug("Upserted events for {CalendarName} - Added: {Added}, Updated: {Updated}, Removed: {Removed}",
+            calendar.Name, addedCount, updatedCount, eventsToRemove.Count);
     }
 
     /// <summary>
@@ -189,7 +242,7 @@ public class CalendarSyncService : BackgroundService
     public async Task TriggerSyncAsync(CancellationToken cancellationToken = default)
     {
         _logger.LogInformation("Manual calendar sync triggered");
-        await SyncCalendarEventsAsync(cancellationToken);
+        await SyncAllCalendarsAsync(cancellationToken);
     }
 
     /// <summary>

@@ -13,7 +13,10 @@
       "Bash(dotnet build \"c:\\repo\\FamilyWall\\src\\FamilyWall.App\\FamilyWall.App.csproj\" -f net9.0-windows10.0.19041.0)",
       "Bash(dotnet add \"c:\\repo\\FamilyWall\\src\\FamilyWall.Services\\FamilyWall.Services.csproj\" reference \"c:\\repo\\FamilyWall\\src\\FamilyWall.Integrations.Graph\\FamilyWall.Integrations.Graph.csproj\")",
       "Bash(dotnet add \"c:\\repo\\FamilyWall\\src\\FamilyWall.Integrations.Graph\\FamilyWall.Integrations.Graph.csproj\" package Microsoft.Extensions.Options)",
-      "Bash(git worktree:*)"
+      "Bash(git worktree:*)",
+      "Bash(dir \"C:\\repo\\FamilyWall\\src\" /b)",
+      "Bash(dotnet build:*)",
+      "Bash(dotnet ef migrations add:*)"
     ],
     "deny": [],
     "ask": []
