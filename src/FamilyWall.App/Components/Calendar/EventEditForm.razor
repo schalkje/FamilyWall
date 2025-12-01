@@ -1,0 +1,441 @@
+@using FamilyWall.Core.Models
+
+<div class="event-edit-form">
+    @if (!string.IsNullOrEmpty(ErrorMessage))
+    {
+        <div class="error-banner">
+            <span class="error-icon">⚠️</span>
+            <span>@ErrorMessage</span>
+        </div>
+    }
+
+    <div class="form-section">
+        <label class="form-label required">Title</label>
+        <input type="text"
+               class="form-input @(string.IsNullOrWhiteSpace(Event.Title) && IsEditing ? "invalid" : "")"
+               placeholder="Enter event title..."
+               @bind="Event.Title"
+               @bind:event="oninput"
+               disabled="@(!IsEditing)" />
+    </div>
+
+    <div class="form-row">
+        <div class="form-section flex-1">
+            <label class="form-label required">Start Date</label>
+            <input type="date"
+                   class="form-input"
+                   value="@startDate"
+                   @onchange="@((e) => { startDate = e.Value?.ToString() ?? ""; UpdateStartDateTime(); })"
+                   disabled="@(!IsEditing)" />
+        </div>
+
+        @if (!Event.IsAllDay)
+        {
+            <div class="form-section flex-1">
+                <label class="form-label required">Start Time</label>
+                <input type="time"
+                       class="form-input"
+                       value="@startTime"
+                       @onchange="@((e) => { startTime = e.Value?.ToString() ?? ""; UpdateStartDateTime(); })"
+                       disabled="@(!IsEditing)" />
+            </div>
+        }
+    </div>
+
+    <div class="form-row">
+        <div class="form-section flex-1">
+            <label class="form-label required">End Date</label>
+            <input type="date"
+                   class="form-input"
+                   value="@endDate"
+                   @onchange="@((e) => { endDate = e.Value?.ToString() ?? ""; UpdateEndDateTime(); })"
+                   disabled="@(!IsEditing)" />
+        </div>
+
+        @if (!Event.IsAllDay)
+        {
+            <div class="form-section flex-1">
+                <label class="form-label required">End Time</label>
+                <input type="time"
+                       class="form-input"
+                       value="@endTime"
+                       @onchange="@((e) => { endTime = e.Value?.ToString() ?? ""; UpdateEndDateTime(); })"
+                       disabled="@(!IsEditing)" />
+            </div>
+        }
+    </div>
+
+    <div class="form-section">
+        <div class="duration-display">
+            <span class="duration-label">Duration:</span>
+            <span class="duration-value">@GetDurationText()</span>
+        </div>
+    </div>
+
+    <div class="form-section">
+        <label class="form-checkbox">
+            <input type="checkbox"
+                   @bind="Event.IsAllDay"
+                   @bind:event="oninput"
+                   @onchange="ToggleAllDay"
+                   disabled="@(!IsEditing)" />
+            <span>All-day event</span>
+        </label>
+    </div>
+
+    <div class="form-section">
+        <label class="form-label">Location</label>
+        <input type="text"
+               class="form-input"
+               placeholder="Add location..."
+               @bind="Event.Location"
+               @bind:event="oninput"
+               disabled="@(!IsEditing)" />
+    </div>
+
+    <div class="form-section">
+        <label class="form-label">Calendar</label>
+        <select class="form-select"
+                @bind="Event.CalendarId"
+                @bind:event="oninput"
+                disabled="@(!IsEditing || AvailableCalendars.Count == 0)">
+            @foreach (var calendar in AvailableCalendars)
+            {
+                <option value="@calendar.CalendarId">
+                    @calendar.Name
+                </option>
+            }
+        </select>
+    </div>
+
+    <div class="form-section">
+        <label class="form-label">Description</label>
+        <textarea class="form-textarea"
+                  rows="5"
+                  placeholder="Add description..."
+                  @bind="Event.Description"
+                  @bind:event="oninput"
+                  disabled="@(!IsEditing)"></textarea>
+    </div>
+
+    @if (IsEditing)
+    {
+        <div class="form-actions">
+            <button class="btn-cancel" @onclick="OnCancel" disabled="@IsSaving">
+                Cancel
+            </button>
+            <button class="btn-save" @onclick="OnSaveInternal" disabled="@(IsSaving || !IsValid)">
+                @if (IsSaving)
+                {
+                    <span class="spinner">⟳</span>
+                    <span>Saving...</span>
+                }
+                else
+                {
+                    <span>Save Event</span>
+                }
+            </button>
+        </div>
+    }
+</div>
+
+<style>
+    .event-edit-form {
+        background: white;
+        border-radius: 8px;
+        padding: 2rem;
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+    }
+
+    .error-banner {
+        background: #FFEBEE;
+        color: #C62828;
+        padding: 1rem;
+        border-radius: 6px;
+        margin-bottom: 1.5rem;
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+    }
+
+    .error-icon {
+        font-size: 1.2rem;
+    }
+
+    .form-section {
+        margin-bottom: 1.5rem;
+    }
+
+    .form-row {
+        display: flex;
+        gap: 1rem;
+        margin-bottom: 1.5rem;
+    }
+
+    .flex-1 {
+        flex: 1;
+    }
+
+    .form-label {
+        display: block;
+        font-weight: 600;
+        margin-bottom: 0.5rem;
+        color: #333;
+        font-size: 0.9rem;
+    }
+
+    .form-label.required::after {
+        content: " *";
+        color: #D32F2F;
+    }
+
+    .form-input, .form-select, .form-textarea {
+        width: 100%;
+        padding: 0.75rem;
+        border: 1px solid #e0e0e0;
+        border-radius: 6px;
+        font-size: 1rem;
+        font-family: inherit;
+        transition: all 0.2s;
+    }
+
+    .form-input:focus, .form-select:focus, .form-textarea:focus {
+        outline: none;
+        border-color: #2196F3;
+        box-shadow: 0 0 0 3px rgba(33, 150, 243, 0.1);
+    }
+
+    .form-input:disabled, .form-select:disabled, .form-textarea:disabled {
+        background: #f5f5f5;
+        cursor: not-allowed;
+    }
+
+    .form-input.invalid {
+        border-color: #D32F2F;
+    }
+
+    .form-textarea {
+        resize: vertical;
+        min-height: 100px;
+    }
+
+    .form-checkbox {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        cursor: pointer;
+        user-select: none;
+    }
+
+    .form-checkbox input[type="checkbox"] {
+        width: 20px;
+        height: 20px;
+        cursor: pointer;
+    }
+
+    .form-checkbox input[type="checkbox"]:disabled {
+        cursor: not-allowed;
+    }
+
+    .duration-display {
+        padding: 0.75rem 1rem;
+        background: #f5f5f5;
+        border-radius: 6px;
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+    }
+
+    .duration-label {
+        font-weight: 600;
+        color: #666;
+    }
+
+    .duration-value {
+        color: #333;
+    }
+
+    .form-actions {
+        display: flex;
+        justify-content: flex-end;
+        gap: 1rem;
+        padding-top: 1rem;
+        margin-top: 2rem;
+        border-top: 1px solid #e0e0e0;
+    }
+
+    .btn-cancel, .btn-save {
+        padding: 0.75rem 2rem;
+        border: none;
+        border-radius: 6px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.2s;
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+    }
+
+    .btn-cancel {
+        background: #f5f5f5;
+        color: #333;
+    }
+
+    .btn-cancel:hover:not(:disabled) {
+        background: #e0e0e0;
+    }
+
+    .btn-save {
+        background: #2196F3;
+        color: white;
+    }
+
+    .btn-save:hover:not(:disabled) {
+        background: #1976D2;
+    }
+
+    .btn-save:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+    }
+
+    .spinner {
+        display: inline-block;
+        animation: spin 1s linear infinite;
+    }
+
+    @@keyframes spin {
+        from { transform: rotate(0deg); }
+        to { transform: rotate(360deg); }
+    }
+</style>
+
+@code {
+    [Parameter]
+    public CalendarEvent Event { get; set; } = new() { Title = "", ProviderKey = "", CalendarId = "", Source = "" };
+
+    [Parameter]
+    public bool IsEditing { get; set; }
+
+    [Parameter]
+    public List<CalendarConfiguration> AvailableCalendars { get; set; } = new();
+
+    [Parameter]
+    public EventCallback OnSave { get; set; }
+
+    [Parameter]
+    public EventCallback OnCancel { get; set; }
+
+    [Parameter]
+    public bool IsSaving { get; set; }
+
+    [Parameter]
+    public string ErrorMessage { get; set; } = "";
+
+    private string startDate = "";
+    private string startTime = "";
+    private string endDate = "";
+    private string endTime = "";
+
+    private bool IsValid => !string.IsNullOrWhiteSpace(Event.Title) &&
+                           Event.StartUtc < (Event.EndUtc ?? Event.StartUtc.AddHours(1));
+
+    protected override void OnParametersSet()
+    {
+        UpdateLocalDateTimeFields();
+    }
+
+    private void UpdateLocalDateTimeFields()
+    {
+        var localStart = Event.StartUtc.ToLocalTime();
+        var localEnd = (Event.EndUtc ?? Event.StartUtc.AddHours(1)).ToLocalTime();
+
+        startDate = localStart.ToString("yyyy-MM-dd");
+        startTime = localStart.ToString("HH:mm");
+        endDate = localEnd.ToString("yyyy-MM-dd");
+        endTime = localEnd.ToString("HH:mm");
+    }
+
+    private void UpdateStartDateTime()
+    {
+        if (DateTime.TryParse($"{startDate} {startTime}", out var localStart))
+        {
+            Event.StartUtc = localStart.ToUniversalTime();
+
+            // Ensure end is after start
+            if (Event.EndUtc.HasValue && Event.EndUtc <= Event.StartUtc)
+            {
+                Event.EndUtc = Event.StartUtc.AddHours(1);
+                UpdateLocalDateTimeFields();
+            }
+        }
+    }
+
+    private void UpdateEndDateTime()
+    {
+        if (DateTime.TryParse($"{endDate} {endTime}", out var localEnd))
+        {
+            Event.EndUtc = localEnd.ToUniversalTime();
+
+            // Ensure end is after start
+            if (Event.EndUtc <= Event.StartUtc)
+            {
+                Event.EndUtc = Event.StartUtc.AddHours(1);
+                UpdateLocalDateTimeFields();
+            }
+        }
+    }
+
+    private void ToggleAllDay()
+    {
+        if (Event.IsAllDay)
+        {
+            // Set to start/end of day
+            var localStart = Event.StartUtc.ToLocalTime().Date;
+            Event.StartUtc = localStart.ToUniversalTime();
+            Event.EndUtc = localStart.AddDays(1).ToUniversalTime();
+        }
+        else
+        {
+            // Set default times
+            var localStart = Event.StartUtc.ToLocalTime().Date.AddHours(9);
+            Event.StartUtc = localStart.ToUniversalTime();
+            Event.EndUtc = localStart.AddHours(1).ToUniversalTime();
+        }
+
+        UpdateLocalDateTimeFields();
+    }
+
+    private string GetDurationText()
+    {
+        if (!Event.EndUtc.HasValue)
+            return "No end time";
+
+        var duration = Event.EndUtc.Value - Event.StartUtc;
+
+        if (Event.IsAllDay)
+        {
+            var days = (int)duration.TotalDays;
+            return days == 1 ? "1 day" : $"{days} days";
+        }
+
+        if (duration.TotalMinutes < 60)
+            return $"{(int)duration.TotalMinutes} minutes";
+
+        if (duration.TotalHours < 24)
+        {
+            var hours = (int)duration.TotalHours;
+            var minutes = (int)(duration.TotalMinutes % 60);
+            return minutes > 0 ? $"{hours}h {minutes}m" : $"{hours} hour{(hours == 1 ? "" : "s")}";
+        }
+
+        var totalDays = (int)duration.TotalDays;
+        var remainingHours = (int)(duration.TotalHours % 24);
+        return remainingHours > 0 ? $"{totalDays}d {remainingHours}h" : $"{totalDays} day{(totalDays == 1 ? "" : "s")}";
+    }
+
+    private async Task OnSaveInternal()
+    {
+        await OnSave.InvokeAsync();
+    }
+}

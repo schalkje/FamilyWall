@@ -950,32 +950,47 @@ The backend foundation for multi-calendar support is now fully implemented and t
 - ✅ Event details panel (read-only view)
 - ✅ Calendar settings UI (basic)
 
-### Phase 4: Essential Features
+### Phase 4: Event Creation & Editing (CURRENT PRIORITY)
+- [ ] Event details page with full editing capabilities
+- [ ] Click event → Navigate to event details
+- [ ] Edit event: title, start, end, duration, description
+- [ ] Family member selector (who is it for)
+- [ ] Day view page with hourly time slots
+- [ ] Click day label → Navigate to day view
+- [ ] Create event via "New Event" button
+- [ ] Create event by clicking time slot in day view
+- [ ] Event deletion with confirmation
+- [ ] Save changes to Microsoft Graph API
+
+### Phase 5: Essential Features
 - [ ] Recurring events support
 - [ ] Event filtering and sorting
-- [ ] Calendar color customization
 - [ ] Multiple view persistence (remember user's preferred view)
-- [ ] Basic event notifications
+- [ ] Event notifications
+- [ ] Event conflict detection
+- [ ] Time zone support
 
-### Phase 5: Polish & Optimization
+### Phase 6: Polish & Optimization
 - [ ] Performance optimization
 - [ ] Caching improvements
-- [ ] Offline support
+- [ ] Offline support with sync queue
 - [ ] Keyboard shortcuts
-- [ ] Accessibility improvements
+- [ ] Accessibility improvements (ARIA, screen readers)
 - [ ] Mobile responsiveness
+- [ ] Drag & drop event rescheduling
+- [ ] Event duplication
 
-### Phase 6: Advanced Features (Future)
+### Phase 7: Advanced Features (Future)
 - [ ] Event response tracking (Accept/Decline/Tentative)
 - [ ] Calendar subscriptions (ICS/iCal feeds)
 - [ ] Google Calendar integration
-- [ ] Event search functionality
-- [ ] Event creation/editing (write operations)
+- [ ] Advanced event search
 - [ ] Attendee management
-- [ ] Calendar sharing features
+- [ ] Calendar sharing with family
 - [ ] Advanced recurrence patterns
-- [ ] Event reminders and notifications
-- [ ] Drag & drop event rescheduling
+- [ ] Natural language event creation
+- [ ] Event templates
+- [ ] Print calendar views
 
 ---
 
@@ -1110,9 +1125,32 @@ This comprehensive backend architecture provides a solid foundation for a fully-
 7. ✅ Implemented event details panel (read-only)
 8. ✅ Added calendar settings UI
 
-**Phase 4 - Essential Features:**
-9. Support recurring events display
-10. Add event filtering and sorting
-11. Implement calendar color customization
+**Implemented Files (Phase 3):**
+- `FamilyWall.App/ViewModels/CalendarViewModel.cs` - View state management
+- `FamilyWall.App/Components/Calendar/MonthViewSimple.razor` - Month calendar grid
+- `FamilyWall.App/Components/Calendar/WeekView.razor` - Week view with hourly slots
+- `FamilyWall.App/Components/Calendar/AgendaView.razor` - Agenda list view
+- `FamilyWall.App/Components/Calendar/EventDetailsPanel.razor` - Event details side panel
+- `FamilyWall.App/Components/Calendar/CalendarManagementPanel.razor` - Calendar settings panel
+- `FamilyWall.App/Components/Pages/Calendar.razor` - Updated with view switching and panels
 
-This architecture ensures FamilyWall has a professional calendar system focused on viewing and organizing multiple Outlook calendars, with a clear path for future enhancements like event creation, Google Calendar integration, and ICS subscriptions (Phase 6).
+**Phase 4 - Event Creation & Editing:** ⏳ NEXT PRIORITY
+9. Implement event details page with full editing
+10. Add day view with hourly time slots
+11. Enable event creation (button + click-to-create)
+12. Implement family member assignment
+13. Add event deletion functionality
+14. Integrate with Microsoft Graph API for write operations
+
+**Planning Documents:**
+- See `documents/features/PHASE_4_EVENT_CRUD_PLAN.md` for detailed implementation plan
+- Includes UI mockups, component architecture, and task breakdown
+- Estimated timeline: 8-12 hours of development
+
+**Phase 5 - Essential Features:**
+15. Support recurring events display
+16. Add event filtering and sorting
+17. Implement view preferences persistence
+18. Add event conflict detection
+
+This architecture ensures FamilyWall has a professional calendar system with full CRUD capabilities for calendar events, family member assignment, and intuitive UI for day-to-day calendar management. The system is designed for extensibility with a clear path for future enhancements like advanced features, offline support, and third-party integrations.

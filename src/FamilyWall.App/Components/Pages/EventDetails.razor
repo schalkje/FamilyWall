@@ -1,0 +1,540 @@
+@page "/calendar/event/{EventId:int}"
+@page "/calendar/event/new"
+@using Microsoft.EntityFrameworkCore
+@using FamilyWall.Core.Models
+@using FamilyWall.Services
+@inject ICalendarEventService EventService
+@inject ICalendarService CalendarService
+@inject NavigationManager Navigation
+
+<div class="event-details-page">
+    <div class="page-header">
+        <button class="btn-back" @onclick="GoBack">
+            <span class="back-icon">←</span>
+            <span>Back</span>
+        </button>
+
+        <div class="header-actions">
+            @if (!isEditing && eventData != null && !isNewEvent)
+            {
+                <button class="btn-edit" @onclick="EnableEdit">
+                    ✏️ Edit
+                </button>
+                <button class="btn-delete" @onclick="ShowDeleteConfirmation">
+                    🗑️ Delete
+                </button>
+            }
+        </div>
+    </div>
+
+    <div class="page-content">
+        @if (isLoading)
+        {
+            <div class="loading-state">
+                <div class="spinner-large">⟳</div>
+                <div class="loading-text">Loading event details...</div>
+            </div>
+        }
+        else if (eventData == null && !isNewEvent)
+        {
+            <div class="error-state">
+                <div class="error-icon">⚠️</div>
+                <div class="error-title">Event Not Found</div>
+                <div class="error-text">The event you're looking for doesn't exist or has been deleted.</div>
+                <button class="btn-primary" @onclick="GoBack">Go Back</button>
+            </div>
+        }
+        else
+        {
+            <EventEditForm Event="@editEvent"
+                          IsEditing="@isEditing"
+                          AvailableCalendars="@calendars"
+                          OnSave="SaveEvent"
+                          OnCancel="CancelEdit"
+                          IsSaving="@isSaving"
+                          ErrorMessage="@errorMessage" />
+        }
+    </div>
+
+    @if (showDeleteDialog)
+    {
+        <div class="modal-overlay" @onclick="HideDeleteConfirmation">
+            <div class="modal-dialog" @onclick:stopPropagation="true">
+                <div class="modal-header">
+                    <h3>Delete Event</h3>
+                    <button class="close-btn" @onclick="HideDeleteConfirmation">✕</button>
+                </div>
+                <div class="modal-body">
+                    <p>Are you sure you want to delete this event?</p>
+                    <p><strong>@eventData?.Title</strong></p>
+                    <p class="warning-text">This action cannot be undone.</p>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn-secondary" @onclick="HideDeleteConfirmation">Cancel</button>
+                    <button class="btn-danger" @onclick="DeleteEvent" disabled="@isDeleting">
+                        @if (isDeleting)
+                        {
+                            <span class="spinner">⟳</span>
+                            <span>Deleting...</span>
+                        }
+                        else
+                        {
+                            <span>Delete Event</span>
+                        }
+                    </button>
+                </div>
+            </div>
+        </div>
+    }
+</div>
+
+<style>
+    .event-details-page {
+        height: 100vh;
+        display: flex;
+        flex-direction: column;
+        background: #f5f5f5;
+    }
+
+    .page-header {
+        background: white;
+        padding: 1rem 2rem;
+        border-bottom: 1px solid #e0e0e0;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+
+    .btn-back {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        padding: 0.5rem 1rem;
+        background: white;
+        border: 1px solid #e0e0e0;
+        border-radius: 6px;
+        cursor: pointer;
+        font-weight: 500;
+        transition: all 0.2s;
+    }
+
+    .btn-back:hover {
+        background: #f5f5f5;
+        border-color: #2196F3;
+    }
+
+    .back-icon {
+        font-size: 1.2rem;
+    }
+
+    .header-actions {
+        display: flex;
+        gap: 0.5rem;
+    }
+
+    .btn-edit, .btn-delete {
+        padding: 0.5rem 1rem;
+        border: 1px solid #e0e0e0;
+        border-radius: 6px;
+        cursor: pointer;
+        font-weight: 500;
+        transition: all 0.2s;
+    }
+
+    .btn-edit {
+        background: #2196F3;
+        color: white;
+        border-color: #2196F3;
+    }
+
+    .btn-edit:hover {
+        background: #1976D2;
+    }
+
+    .btn-delete {
+        background: white;
+        color: #D32F2F;
+        border-color: #D32F2F;
+    }
+
+    .btn-delete:hover {
+        background: #D32F2F;
+        color: white;
+    }
+
+    .page-content {
+        flex: 1;
+        overflow-y: auto;
+        padding: 2rem;
+        max-width: 800px;
+        width: 100%;
+        margin: 0 auto;
+    }
+
+    .loading-state, .error-state {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        padding: 4rem 2rem;
+        text-align: center;
+    }
+
+    .spinner-large {
+        font-size: 3rem;
+        animation: spin 1s linear infinite;
+        margin-bottom: 1rem;
+    }
+
+    @@keyframes spin {
+        from { transform: rotate(0deg); }
+        to { transform: rotate(360deg); }
+    }
+
+    .loading-text {
+        font-size: 1.1rem;
+        color: #666;
+    }
+
+    .error-icon {
+        font-size: 4rem;
+        margin-bottom: 1rem;
+        opacity: 0.5;
+    }
+
+    .error-title {
+        font-size: 1.5rem;
+        font-weight: 600;
+        margin-bottom: 0.5rem;
+        color: #333;
+    }
+
+    .error-text {
+        font-size: 1rem;
+        color: #666;
+        margin-bottom: 2rem;
+    }
+
+    .btn-primary {
+        padding: 0.75rem 2rem;
+        background: #2196F3;
+        color: white;
+        border: none;
+        border-radius: 6px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.2s;
+    }
+
+    .btn-primary:hover {
+        background: #1976D2;
+    }
+
+    /* Delete Confirmation Modal */
+    .modal-overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(0, 0, 0, 0.5);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 1000;
+    }
+
+    .modal-dialog {
+        background: white;
+        border-radius: 8px;
+        max-width: 500px;
+        width: 90%;
+        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+    }
+
+    .modal-header {
+        padding: 1.5rem;
+        border-bottom: 1px solid #e0e0e0;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+
+    .modal-header h3 {
+        margin: 0;
+        font-size: 1.25rem;
+    }
+
+    .close-btn {
+        background: none;
+        border: none;
+        font-size: 1.5rem;
+        cursor: pointer;
+        color: #666;
+        padding: 0;
+        line-height: 1;
+    }
+
+    .close-btn:hover {
+        color: #333;
+    }
+
+    .modal-body {
+        padding: 1.5rem;
+    }
+
+    .modal-body p {
+        margin: 0 0 0.75rem 0;
+    }
+
+    .warning-text {
+        color: #D32F2F;
+        font-size: 0.9rem;
+        font-style: italic;
+    }
+
+    .modal-footer {
+        padding: 1rem 1.5rem;
+        border-top: 1px solid #e0e0e0;
+        display: flex;
+        justify-content: flex-end;
+        gap: 0.5rem;
+    }
+
+    .btn-secondary, .btn-danger {
+        padding: 0.75rem 1.5rem;
+        border: none;
+        border-radius: 6px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.2s;
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+    }
+
+    .btn-secondary {
+        background: #f5f5f5;
+        color: #333;
+    }
+
+    .btn-secondary:hover {
+        background: #e0e0e0;
+    }
+
+    .btn-danger {
+        background: #D32F2F;
+        color: white;
+    }
+
+    .btn-danger:hover:not(:disabled) {
+        background: #B71C1C;
+    }
+
+    .btn-danger:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+    }
+
+    .spinner {
+        display: inline-block;
+        animation: spin 1s linear infinite;
+    }
+</style>
+
+@code {
+    [Parameter]
+    public int? EventId { get; set; }
+
+    private CalendarEvent? eventData;
+    private CalendarEvent editEvent = new() { Title = "", ProviderKey = "", CalendarId = "", Source = "" };
+    private List<CalendarConfiguration> calendars = new();
+
+    private bool isNewEvent => EventId == null;
+    private bool isLoading = true;
+    private bool isEditing = false;
+    private bool isSaving = false;
+    private bool isDeleting = false;
+    private bool showDeleteDialog = false;
+    private string errorMessage = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadCalendarsAsync();
+
+        if (isNewEvent)
+        {
+            isEditing = true;
+            isLoading = false;
+            InitializeNewEvent();
+        }
+        else if (EventId.HasValue)
+        {
+            await LoadEventAsync();
+        }
+    }
+
+    private void InitializeNewEvent()
+    {
+        var defaultCalendar = calendars.FirstOrDefault(c => c.IsDefault) ?? calendars.FirstOrDefault();
+
+        editEvent = new CalendarEvent
+        {
+            Title = "",
+            ProviderKey = Guid.NewGuid().ToString(),
+            CalendarId = defaultCalendar?.CalendarId ?? "",
+            Source = "Local",
+            StartUtc = DateTime.Today.AddHours(DateTime.Now.Hour + 1),
+            EndUtc = DateTime.Today.AddHours(DateTime.Now.Hour + 2),
+            IsAllDay = false,
+            CreatedUtc = DateTime.UtcNow,
+            UpdatedUtc = DateTime.UtcNow
+        };
+    }
+
+    private async Task LoadCalendarsAsync()
+    {
+        try
+        {
+            calendars = await CalendarService.GetAllCalendarsAsync();
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error loading calendars: {ex.Message}";
+        }
+    }
+
+    private async Task LoadEventAsync()
+    {
+        try
+        {
+            isLoading = true;
+            eventData = await EventService.GetEventAsync(EventId!.Value);
+
+            if (eventData != null)
+            {
+                editEvent = CloneEvent(eventData);
+            }
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error loading event: {ex.Message}";
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private CalendarEvent CloneEvent(CalendarEvent source)
+    {
+        return new CalendarEvent
+        {
+            Id = source.Id,
+            ProviderKey = source.ProviderKey,
+            CalendarId = source.CalendarId,
+            Title = source.Title,
+            StartUtc = source.StartUtc,
+            EndUtc = source.EndUtc,
+            IsAllDay = source.IsAllDay,
+            IsBirthday = source.IsBirthday,
+            IsRecurring = source.IsRecurring,
+            RecurrenceRule = source.RecurrenceRule,
+            Source = source.Source,
+            Description = source.Description,
+            Location = source.Location,
+            Organizer = source.Organizer,
+            Attendees = source.Attendees?.ToList(),
+            Status = source.Status,
+            ResponseStatus = source.ResponseStatus,
+            OnlineMeetingUrl = source.OnlineMeetingUrl,
+            Color = source.Color,
+            CreatedUtc = source.CreatedUtc,
+            UpdatedUtc = DateTime.UtcNow
+        };
+    }
+
+    private void EnableEdit()
+    {
+        isEditing = true;
+        editEvent = CloneEvent(eventData!);
+    }
+
+    private void CancelEdit()
+    {
+        if (isNewEvent)
+        {
+            GoBack();
+        }
+        else
+        {
+            isEditing = false;
+            editEvent = CloneEvent(eventData!);
+            errorMessage = "";
+        }
+    }
+
+    private async Task SaveEvent()
+    {
+        isSaving = true;
+        errorMessage = "";
+
+        try
+        {
+            if (isNewEvent)
+            {
+                var created = await EventService.CreateEventAsync(editEvent);
+                Navigation.NavigateTo($"/calendar/event/{created.Id}");
+            }
+            else
+            {
+                await EventService.UpdateEventAsync(editEvent);
+                eventData = editEvent;
+                isEditing = false;
+            }
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error saving event: {ex.Message}";
+        }
+        finally
+        {
+            isSaving = false;
+        }
+    }
+
+    private void ShowDeleteConfirmation()
+    {
+        showDeleteDialog = true;
+    }
+
+    private void HideDeleteConfirmation()
+    {
+        showDeleteDialog = false;
+    }
+
+    private async Task DeleteEvent()
+    {
+        isDeleting = true;
+
+        try
+        {
+            await EventService.DeleteEventAsync(EventId!.Value);
+            Navigation.NavigateTo("/calendar");
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error deleting event: {ex.Message}";
+            showDeleteDialog = false;
+        }
+        finally
+        {
+            isDeleting = false;
+        }
+    }
+
+    private void GoBack()
+    {
+        Navigation.NavigateTo("/calendar");
+    }
+}
